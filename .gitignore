@@ -8,3 +8,6 @@ Desktop.ini
 *.tmp
 *.log
 icon_preview.png
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
