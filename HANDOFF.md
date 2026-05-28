@@ -7,7 +7,7 @@ Du bist ein erfahrener Full-Stack-Entwickler und hilfst mir (Gründer in der Bau
 
 ## Technischer Stand
 - **Eine einzige Datei:** `index.html` (HTML + CSS + JavaScript inline, ~57 KB)
-- **Speicherort:** `C:\Users\sebas\Desktop\Claude Projekte\Glass Data Tool\`
+- **Speicherort:** `C:\Users\sebas\Desktop\Claude Projekte\ReFloat Inventory\`
 - **Datenspeicher aktuell:** Browser `localStorage`, Key = `gdt_v1` (noch KEINE Cloud-Anbindung)
 - **Umgebung:** Windows, Python 3.14 + Pillow 12.2 verfügbar
 - **Vorschau-Server:** `.claude/launch.json` → Name `glass-static`, startet `python -m http.server 8777`
@@ -27,7 +27,7 @@ Du bist ein erfahrener Full-Stack-Entwickler und hilfst mir (Gründer in der Bau
 ## Branding
 - **Name:** „ReFloat Inventory", Untertitel „Datenbank für Zirkuläres Flachglas"
 - **Icon** im Header, im Browser-Tab (Favicon), als Desktop-Icon und im PDF-Datenblatt
-- **Farben:** Primär `#5B4BE1` (Violett), Sekundär `#1E3A5F`, Akzent `#7C6EF0`, BG `#F8F8FC`, Karten `#FFF`, Text `#1A1A2E`, Subtext `#6B7280`, Rahmen `#E5E7EB`, Danger `#E5484D`. Radien: Karten 16px, Inputs 10px, Buttons 14px. System-Font, max. Inhaltsbreite 900px, mobile-first (1 Spalte, 2 Spalten ab 600px).
+- **Farben:** Primär `#5B4BE1` (Violett), Sekundär `#1E3A5F`, Akzent `#7C6EF0`, BG `#F8F8FC`, Karten `#FFF`, Text `#1A1A2E`, Subtext `#6B7280`, Rahmen `#E5E7EB`, Danger `#E5484D`. Radien: Karten 16px, Inputs 10px, Buttons 14px. System-Font, max. Inhaltsbreite 1400px, mobile-first (1 Spalte, 2 Spalten ab 600px).
 
 ## Funktionsumfang (fertig & getestet)
 - **Erfassung:** Projekt-Header (Gebäude, Adresse, Rückbaujahr) + beliebig viele **Glaspositionen** (P1, P2…) mit „+ Position hinzufügen" / „×" entfernen (mind. 1 Position).
