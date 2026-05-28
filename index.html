@@ -103,6 +103,8 @@ input.ro,input[readonly]{background:var(--bg);color:var(--subtext);cursor:not-al
 .hit-count{display:inline-block;min-width:32px;padding:3px 10px;border-radius:999px;background:var(--primary);color:#fff;font-weight:700;font-size:.85rem;text-align:center}
 .hit-count.zero{background:var(--danger)}
 .hit-count.few{background:#F59E0B}
+.hit-count.ok{background:#16A34A}
+.hit-count.partial{background:#F59E0B}
 .transparency{background:#FFF4E5;border-left:4px solid #F59E0B;padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:.9rem}
 .transparency.zero{background:#FEE7E8;border-left-color:var(--danger)}
 .transparency strong{color:var(--text)}
@@ -530,6 +532,7 @@ tr:last-child td{border-bottom:none}
         <button class="btn btn-ghost btn-sm" onclick="matchReset()">Neu laden</button>
       </div>
     </div>
+    <div id="m-plan"></div>
     <div class="tbl-wrap">
       <table>
         <thead><tr>
@@ -540,7 +543,7 @@ tr:last-child td{border-bottom:none}
           <th>Beschichtung</th>
           <th>Menge</th>
           <th>Farbe</th>
-          <th>Treffer</th>
+          <th>Status</th>
         </tr></thead>
         <tbody id="m-tbody"></tbody>
       </table>
@@ -1940,17 +1943,210 @@ function buildCombo(req, matches){
   };
 }
 
+// ════════ Globaler Plan: alle Anfrage-Positionen gemeinsam, kein Doppelmatch ════════
+// Stufe B: 2D-Bin-Packing mit Mixed-Cutting. Mehrere unterschiedlich große Anfrage-Stücke
+// können aus EINER Bestandsscheibe geschnitten werden (Shelf-Packing FFDH-Heuristik).
+// Der Bestand wird über ALLE Anfrage-Positionen gemeinsam verteilt — ein Bestand-Stück
+// kann nicht zweimal vergeben werden.
+
+// 2D-Bin-Packing-Heuristik (Shelf-Packing, First Fit Decreasing Height).
+// stockW × stockH = Bestandsmaße. demands = [{w,h,reqIdx,remaining_count}, ...].
+// `remaining_count` wird IN-PLACE dekrementiert pro platziertem Stück.
+// margin = Randreserve in mm (einseitig pro Achse: nutzbar = stock - margin).
+// Liefert Liste platzierter Stücke mit (x, y, rotated).
+function packSheet(stockW, stockH, demands, margin){
+  const innerW = stockW - margin;
+  const innerH = stockH - margin;
+  if(innerW <= 0 || innerH <= 0) return [];
+  const placed = [];
+  let currentY = 0;
+  while(currentY < innerH){
+    const remH = innerH - currentY;
+    // Bestimme Regalhöhe als max Stück-Höhe, die noch in remH passt (beide Orientierungen)
+    let shelfH = 0;
+    for(const d of demands){
+      if(d.remaining_count <= 0) continue;
+      if(d.h <= remH && d.w <= innerW) shelfH = Math.max(shelfH, d.h);
+      if(d.w <= remH && d.h <= innerW) shelfH = Math.max(shelfH, d.w);
+    }
+    if(shelfH === 0) break;
+    // Platziere Stücke nebeneinander; pro Schritt das größte verfügbare wählen
+    let currentX = 0;
+    while(currentX < innerW){
+      const remW = innerW - currentX;
+      let candidates = [];
+      for(const d of demands){
+        if(d.remaining_count <= 0) continue;
+        if(d.h <= shelfH && d.w <= remW){
+          candidates.push({d, w:d.w, h:d.h, rotated:false, area:d.w*d.h});
+        }
+        if(d.w !== d.h && d.w <= shelfH && d.h <= remW){
+          candidates.push({d, w:d.h, h:d.w, rotated:true, area:d.w*d.h});
+        }
+      }
+      if(candidates.length === 0) break;
+      candidates.sort((a,b)=>b.area - a.area);
+      const best = candidates[0];
+      placed.push({reqIdx: best.d.reqIdx, w: best.d.w, h: best.d.h, x: currentX, y: currentY, rotated: best.rotated});
+      best.d.remaining_count -= 1;
+      currentX += best.w;
+    }
+    currentY += shelfH;
+  }
+  return placed;
+}
+
+// Match-Kriterien-Check OHNE qty/dims (die werden über Bin-Packing entschieden)
+function meetsGroupCriteria(criteria, e){
+  if(criteria.type != null && String(e.type||'').trim() !== criteria.type) return false;
+  if(criteria.d != null && Number(e.d||e.glassMm||0) !== criteria.d) return false;
+  if(criteria.coating != null && String(e.coating||'').trim() !== criteria.coating) return false;
+  if(criteria.color != null && String(e.color||'').trim() !== criteria.color) return false;
+  if(e.status !== 'Verfügbar') return false;
+  return true;
+}
+
+// Wie expandDbForRequest, aber initialisiert _remaining (eigener Verbrauchszähler für globalen Plan)
+function expandStockGlobal(criteria, availableStock){
+  if(criteria.type !== 'Floatglas') return availableStock;
+  const out = [];
+  for(const e of availableStock){
+    out.push(e);
+    if(!e.build || e.build.kind !== 'iso' || !Array.isArray(e.build.lagen)) continue;
+    const byD = new Map();
+    e.build.lagen.forEach((l, idx) => {
+      if(l && l.art === 'Floatglas' && !l.coat && +l.d > 0){
+        if(!byD.has(l.d)) byD.set(l.d, []);
+        byD.get(l.d).push(idx + 1);
+      }
+    });
+    for(const [d, layerNums] of byD.entries()){
+      const layerLabel = layerNums.length === 1
+        ? `Pos ${2*layerNums[0]-1}/${2*layerNums[0]}`
+        : layerNums.map(idx => `Pos ${2*idx-1}/${2*idx}`).join('+');
+      out.push(Object.assign({}, e, {
+        _virtual: true,
+        _parentId: e.id,
+        id: e.id + ' · ' + layerLabel,
+        type: 'Floatglas',
+        d: d,
+        glassMm: d,
+        build: null,
+        coating: 'Keine',
+        _remaining: (Number(e.qty)||0) * layerNums.length
+      }));
+    }
+  }
+  return out;
+}
+
+// Globaler Allokations-Algorithmus.
+// Gruppiert Anfragen nach gemeinsamen Match-Kriterien (Typ+Dicke+Beschichtung+Farbe).
+// Pro Gruppe: sortiert Bestand nach Fläche absteigend, schneidet pro Bestand-Stück mit
+// packSheet so viele unterschiedlich große Anfrage-Stücke wie möglich (Mixed-Cutting),
+// dekrementiert Bedarf und Bestand-Verfügbarkeit, geht zum nächsten Bestand-Stück über.
+function globalAllocate(reqs){
+  if(!reqs || reqs.length === 0){
+    return {allocations:[], perRequest:[], totalWastePct:0, totalSheetsUsed:0, complete:true};
+  }
+  // Bestandskopie mit individuellem Verbrauchszähler
+  const availableStock = db.map(e => Object.assign({}, e, {_remaining: Number(e.qty)||0}));
+  // Demand-Tracker pro Anfrage-Position
+  const demandTracker = reqs.map((r, idx) => ({
+    reqIdx: idx, req: r,
+    demanded: Number(r.qty)||0,
+    remaining: Number(r.qty)||0,
+    allocated: 0
+  }));
+  // Gruppieren nach Match-Kriterien
+  const groups = new Map();
+  reqs.forEach((r, idx) => {
+    const key = [r.type||'', r.d==null?'':r.d, r.coating||'', r.color||''].join('|');
+    if(!groups.has(key)) groups.set(key, {criteria: r, requests: []});
+    groups.get(key).requests.push({req: r, idx});
+  });
+
+  const allocations = [];
+  for(const [key, group] of groups.entries()){
+    const effectiveStock = expandStockGlobal(group.criteria, availableStock);
+    const matching = effectiveStock
+      .filter(e => meetsGroupCriteria(group.criteria, e))
+      .sort((a,b) => (Number(b.w)||0)*(Number(b.h)||0) - (Number(a.w)||0)*(Number(a.h)||0));
+    // Demands der Gruppe als gemeinsame Pack-Eingabe (mit Live-Bindung an demandTracker)
+    const groupDemands = group.requests
+      .filter(r => (Number(r.req.qty)||0) > 0 && (Number(r.req.w)||0) > 0 && (Number(r.req.h)||0) > 0)
+      .map(r => ({
+        w: Number(r.req.w), h: Number(r.req.h),
+        reqIdx: r.idx,
+        get remaining_count(){ return demandTracker[r.idx].remaining; },
+        set remaining_count(v){
+          const tr = demandTracker[r.idx];
+          const delta = tr.remaining - v;
+          tr.remaining = v;
+          tr.allocated += delta;
+        }
+      }));
+    if(groupDemands.length === 0) continue;
+
+    for(const stock of matching){
+      while(stock._remaining > 0 && groupDemands.some(d => d.remaining_count > 0)){
+        const placed = packSheet(Number(stock.w)||0, Number(stock.h)||0, groupDemands, MATCH_SAFETY_MM);
+        if(placed.length === 0) break;
+        const usedArea = placed.reduce((s,p) => s + p.w*p.h, 0);
+        const totalArea = (Number(stock.w)||0) * (Number(stock.h)||0);
+        const wastePct = totalArea > 0 ? Math.max(0, 1 - usedArea/totalArea) : 0;
+        allocations.push({
+          stockId: stock.id,
+          stockOrigId: stock._virtual ? stock._parentId : stock.id,
+          stockW: Number(stock.w)||0, stockH: Number(stock.h)||0,
+          virtual: !!stock._virtual,
+          parentId: stock._parentId || null,
+          type: stock.type,
+          projLabel: stock.projLabel || stock.building || '',
+          price: Number(stock.price)||0,
+          placements: placed,
+          wastePct
+        });
+        stock._remaining -= 1;
+      }
+    }
+  }
+
+  const perRequest = demandTracker.map(t => ({
+    reqIdx: t.reqIdx, req: t.req,
+    demanded: t.demanded, allocated: t.allocated, remaining: t.remaining,
+    stocks: allocations
+      .filter(a => a.placements.some(p => p.reqIdx === t.reqIdx))
+      .map(a => ({
+        stockId: a.stockId, virtual: a.virtual, parentId: a.parentId,
+        stockW: a.stockW, stockH: a.stockH,
+        count: a.placements.filter(p => p.reqIdx === t.reqIdx).length,
+        wastePct: a.wastePct
+      }))
+  }));
+  const totalUsedArea = allocations.reduce((s,a) => s + a.placements.reduce((s2,p) => s2 + p.w*p.h, 0), 0);
+  const totalSheetArea = allocations.reduce((s,a) => s + a.stockW*a.stockH, 0);
+  const totalWastePct = totalSheetArea > 0 ? Math.max(0, 1 - totalUsedArea/totalSheetArea) : 0;
+  return {
+    allocations, perRequest, totalWastePct,
+    totalSheetsUsed: allocations.length,
+    complete: demandTracker.every(t => t.remaining <= 0)
+  };
+}
+
 // ─── State + UI ───
 let matchReqs = [];      // Array von normalisierten Anfragen
 let matchOpenIdx = null; // welche Zeile aufgeklappt ist
-let matchResults = [];   // Cache der Ergebnisse pro Anfrage (matchOne)
+let matchResults = [];   // Cache der Ergebnisse pro Anfrage (matchOne — für Transparenz-Anzeige)
+let matchPlan   = null;  // Globaler Allokationsplan (globalAllocate)
 
 function matchReset(){
-  matchReqs = []; matchOpenIdx = null; matchResults = [];
+  matchReqs = []; matchOpenIdx = null; matchResults = []; matchPlan = null;
   g0('m-file').value = '';
   g0('m-results-wrap').style.display = 'none';
   g0('m-tbody').innerHTML = '';
   g0('m-cnt').textContent = '0';
+  const planBox = document.getElementById('m-plan'); if(planBox) planBox.innerHTML = '';
 }
 
 function matchHandleFile(ev){
@@ -1987,9 +2183,13 @@ function matchLoadFile(file){
       if(reqs.length===0){ toast('Keine Anfragezeilen gefunden','err'); return; }
       matchReqs = reqs;
       matchResults = new Array(reqs.length).fill(null);
+      matchPlan = null;
       matchOpenIdx = null;
-      renderMatchTable();
       g0('m-results-wrap').style.display = 'block';
+      // Globalen Plan direkt berechnen — alle Positionen gemeinsam, keine Dopplungen.
+      matchPlan = globalAllocate(matchReqs);
+      matchResults = matchReqs.map(r => matchOne(r));
+      renderMatchTable();
       toast(`${reqs.length} Anfrage${reqs.length===1?'':'n'} geladen (Spalten erkannt: ${detected.length})`,'ok');
     }catch(err){
       console.error(err); toast('Fehler beim Lesen der Datei','err');
@@ -2027,9 +2227,12 @@ function parseCSVText(text){
 }
 
 function matchAll(){
-  matchResults = matchReqs.map(r=>matchOne(r));
+  // Globaler Plan: alle Anfrage-Positionen gemeinsam, Bestand wird gemeinsam aufgeteilt.
+  matchPlan = globalAllocate(matchReqs);
+  // matchOne pro Position weiterhin für Transparenz-Anzeige (welche Kriterien sind zu eng).
+  matchResults = matchReqs.map(r => matchOne(r));
   renderMatchTable();
-  toast('Alle Anfragen abgeglichen','ok');
+  toast('Anfragen abgeglichen (globaler Plan)','ok');
 }
 
 function reqSummary(r){
@@ -2044,12 +2247,22 @@ function reqSummary(r){
 
 function renderMatchTable(){
   g0('m-cnt').textContent = matchReqs.length;
+  // Globale Plan-Box rendern
+  const planBox = g0('m-plan');
+  if(planBox) planBox.innerHTML = renderGlobalPlan();
   const rows = matchReqs.map((r,idx)=>{
-    const res = matchResults[idx];
-    const hitCell = res==null
-      ? `<button class="btn btn-soft btn-sm" onclick="event.stopPropagation();matchSingle(${idx})">Abgleichen</button>`
-      : (()=>{ const n=res.matches.length; const cls = n===0?'zero':(n<3?'few':''); return `<span class="hit-count ${cls}">${n}</span>`; })();
     const isOpen = matchOpenIdx===idx;
+    // Status-Zelle aus dem globalen Plan
+    let statusCell;
+    if(matchPlan==null){
+      statusCell = `<button class="btn btn-soft btn-sm" onclick="event.stopPropagation();matchSingle(${idx})">Abgleichen</button>`;
+    } else {
+      const p = matchPlan.perRequest[idx];
+      const cls = p.allocated >= p.demanded ? 'ok' : (p.allocated > 0 ? 'partial' : 'zero');
+      const txt = p.allocated >= p.demanded ? '✓ ' + p.allocated + '/' + p.demanded
+                : (p.allocated > 0 ? p.allocated + '/' + p.demanded : '0/' + p.demanded);
+      statusCell = `<span class="hit-count ${cls}">${txt}</span>`;
+    }
     const tr = `<tr class="req-row ${isOpen?'open':''}" onclick="matchToggle(${idx})">
       <td><strong>${escapeHtml(r.reqId)}</strong></td>
       <td>${escapeHtml(r.type||'–')}</td>
@@ -2058,7 +2271,7 @@ function renderMatchTable(){
       <td>${escapeHtml(r.coating||'–')}</td>
       <td>${r.qty!=null?r.qty:'–'}</td>
       <td>${escapeHtml(r.color||'–')}</td>
-      <td>${hitCell}</td>
+      <td>${statusCell}</td>
     </tr>`;
     const detail = isOpen ? `<tr class="req-detail"><td colspan="8"><div class="req-detail-inner">${renderMatchDetail(idx)}</div></td></tr>` : '';
     return tr + detail;
@@ -2066,7 +2279,56 @@ function renderMatchTable(){
   g0('m-tbody').innerHTML = rows.join('');
 }
 
+// Render die Gesamtplan-Box über der Anfragen-Tabelle
+function renderGlobalPlan(){
+  if(matchPlan == null) return '';
+  const p = matchPlan;
+  const totalDemanded = p.perRequest.reduce((s,r) => s + r.demanded, 0);
+  const totalAllocated = p.perRequest.reduce((s,r) => s + r.allocated, 0);
+  const fullyCovered = p.perRequest.filter(r => r.allocated >= r.demanded && r.demanded > 0).length;
+  const positionsCount = p.perRequest.filter(r => r.demanded > 0).length;
+  const cls = p.complete ? 'recommend' : 'recommend partial';
+  const icon = p.complete ? '🎯' : '⚠';
+  const title = p.complete ? 'Gesamtplan — alle Positionen gedeckt' : 'Gesamtplan — Teilabdeckung';
+  // Aufgelistete Bestand-Stücke nach Häufigkeit gruppieren (gleicher Bestand-Posten + gleiche Maße)
+  // Damit nicht z.B. 8 einzelne Zeilen für 8 Mal denselben Posten rauskommen.
+  const stockGroups = new Map();
+  p.allocations.forEach(a => {
+    const k = a.stockId + '|' + a.stockW + 'x' + a.stockH;
+    if(!stockGroups.has(k)) stockGroups.set(k, {alloc:a, count:0, totalDelivered:0, sumWaste:0});
+    const g = stockGroups.get(k);
+    g.count += 1;
+    g.totalDelivered += a.placements.length;
+    g.sumWaste += a.wastePct;
+  });
+  const stockList = Array.from(stockGroups.values()).map(g => {
+    const a = g.alloc;
+    const targetId = a.virtual ? a.parentId : a.stockId;
+    const avgWaste = (g.sumWaste / g.count * 100).toFixed(0);
+    // Welche Anfrage-Positionen werden aus diesem Bestand bedient?
+    const reqIdxSet = new Set();
+    a.placements.forEach(pl => reqIdxSet.add(pl.reqIdx));
+    p.allocations.filter(x => x.stockId === a.stockId).forEach(x => x.placements.forEach(pl => reqIdxSet.add(pl.reqIdx)));
+    const reqLabels = Array.from(reqIdxSet).map(i => escapeHtml(matchReqs[i].reqId)).join(', ');
+    return `<li onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
+      <div><strong>${g.count}× </strong><span class="pick-id">${escapeHtml(a.stockId)}</span> (${a.stockW}×${a.stockH} mm) → ${g.totalDelivered} Scheiben</div>
+      <div class="pick-detail">${escapeHtml(a.type)} · bedient ${reqLabels} · ⌀ Verschnitt ${avgWaste}%</div>
+    </li>`;
+  }).join('');
+  return `<div class="${cls}" style="margin-top:14px">
+    <div class="recommend-title">${icon} ${title}</div>
+    <div class="recommend-summary">
+      Deckt <strong>${totalAllocated}/${totalDemanded}</strong> Anfrage-Scheiben aus <strong>${p.totalSheetsUsed}</strong> Bestand-Stücken
+      (${stockGroups.size} unterschiedliche Posten) · <strong>${fullyCovered}/${positionsCount}</strong> Positionen voll gedeckt · ⌀ Verschnitt <strong>${(p.totalWastePct*100).toFixed(0)}%</strong>
+    </div>
+    ${stockList ? '<ul>'+stockList+'</ul>' : '<div style="color:var(--subtext);font-size:.85rem">Keine Allokationen — Anfragen passen nicht zum Bestand.</div>'}
+  </div>`;
+}
+
 function matchSingle(idx){
+  // Eine einzelne Anfrage anzugleichen heißt im globalen Modell: kompletter Re-Plan,
+  // da die Allokation einer Position die anderen beeinflusst.
+  matchPlan = globalAllocate(matchReqs);
   matchResults[idx] = matchOne(matchReqs[idx]);
   renderMatchTable();
 }
@@ -2075,6 +2337,7 @@ function matchToggle(idx){
   if(matchOpenIdx===idx){ matchOpenIdx=null; }
   else {
     matchOpenIdx = idx;
+    if(matchPlan==null) matchPlan = globalAllocate(matchReqs);
     if(matchResults[idx]==null) matchResults[idx] = matchOne(matchReqs[idx]);
   }
   renderMatchTable();
@@ -2083,10 +2346,45 @@ function matchToggle(idx){
 function renderMatchDetail(idx){
   const r = matchReqs[idx];
   const res = matchResults[idx];
-  if(!res) return '<div style="padding:10px">Noch nicht abgeglichen.</div>';
+  const plan = matchPlan;
+  if(!res && !plan) return '<div style="padding:10px">Noch nicht abgeglichen.</div>';
   let html = '';
-  // Transparenz-Anzeige bei 0 oder wenig Treffern
-  if(res.matches.length < 3){
+  // 1. Plan-Zuweisung dieser Position (was wurde aus welchen Bestand-Stücken zugeschnitten?)
+  if(plan){
+    const p = plan.perRequest[idx];
+    const cls = (p.allocated >= p.demanded && p.demanded>0) ? 'recommend' : (p.allocated > 0 ? 'recommend partial' : 'recommend partial');
+    const icon = (p.allocated >= p.demanded && p.demanded>0) ? '✓' : (p.allocated > 0 ? '⚠' : '✗');
+    const title = (p.allocated >= p.demanded && p.demanded>0)
+      ? 'Diese Position ist voll gedeckt'
+      : (p.allocated > 0 ? 'Teilabdeckung — Bestand reicht nicht für alles' : 'Keine Allokation — Anforderungen passen nicht zum Bestand');
+    const summary = `Globaler Plan weist <strong>${p.allocated}/${p.demanded}</strong> Anfrage-Scheiben aus <strong>${p.stocks.length}</strong> Bestand-Posten zu`;
+    // Stocks gruppieren (z.B. 3× FG-A statt 3 Einzelzeilen)
+    const stockAgg = new Map();
+    p.stocks.forEach(s => {
+      const k = s.stockId;
+      if(!stockAgg.has(k)) stockAgg.set(k, {first:s, sheetsCount:0, deliveredCount:0, sumWaste:0});
+      const g = stockAgg.get(k);
+      g.sheetsCount += 1;       // Anzahl angeschnittener Bestand-Stücke (je Eintrag = 1 Scheibe)
+      g.deliveredCount += s.count;
+      g.sumWaste += s.wastePct;
+    });
+    const stockListItems = Array.from(stockAgg.values()).map(g => {
+      const s = g.first;
+      const targetId = s.virtual ? s.parentId : s.stockId;
+      const avgWaste = (g.sumWaste / g.sheetsCount * 100).toFixed(0);
+      return `<li onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
+        <div><strong>${g.sheetsCount}× </strong>aus <span class="pick-id">${escapeHtml(s.stockId)}</span> (${s.stockW}×${s.stockH} mm) → <strong>${g.deliveredCount}</strong> Scheibe${g.deliveredCount===1?'':'n'}</div>
+        <div class="pick-detail">⌀ Verschnitt ${avgWaste}% (auf dieselbe Bestand-Scheibe können auch Stücke anderer Anfrage-Positionen kommen)</div>
+      </li>`;
+    }).join('');
+    html += `<div class="${cls}">
+      <div class="recommend-title">${icon} ${title}</div>
+      <div class="recommend-summary">${summary}</div>
+      ${stockListItems ? '<ul>'+stockListItems+'</ul>' : ''}
+    </div>`;
+  }
+  // 2. Transparenz-Anzeige bei wenig oder keinen passenden Posten
+  if(res && res.matches.length < 3){
     const fails = res.applied
       .filter(k => k!=='status')
       .map(k=>({k, label: MATCH_CRITERIA.find(c=>c.key===k).label, gain: res.wouldPassIfIgnored[k]}))
@@ -2095,76 +2393,52 @@ function renderMatchDetail(idx){
     if(fails.length>0){
       const zero = res.matches.length===0;
       html += `<div class="transparency ${zero?'zero':''}">
-        <strong>${res.matches.length===0?'Keine Treffer.':res.matches.length+' Treffer.'}</strong>
+        <strong>${res.matches.length===0?'Keine passenden Bestandsposten.':res.matches.length+' passende Bestandsposten insgesamt.'}</strong>
         Wenn jeweils EIN Kriterium ignoriert würde:
         <ul>${fails.map(f=>`<li><strong>${f.label}</strong> ignorieren → ${f.gain} Posten würden passen</li>`).join('')}</ul>
       </div>`;
     } else if(res.matches.length===0){
-      html += `<div class="transparency zero"><strong>Keine Treffer.</strong> Auch das Ignorieren einzelner Kriterien bringt keine zusätzlichen Posten — vermutlich kombinieren sich mehrere Anforderungen.</div>`;
+      html += `<div class="transparency zero"><strong>Keine passenden Bestandsposten.</strong> Auch das Ignorieren einzelner Kriterien bringt keine zusätzlichen Posten — vermutlich kombinieren sich mehrere Anforderungen.</div>`;
     }
   }
-  if(res.matches.length===0){
-    if(!html) html = '<div style="padding:10px;color:var(--subtext)">Keine passenden Posten im Bestand.</div>';
-    return html;
+  // 3. Liste der grundsätzlich passenden Bestand-Posten (Referenz / alternative Auswahl)
+  if(res && res.matches.length > 0){
+    const hasDims = (r.w!=null || r.h!=null);
+    html += `<details style="margin-top:12px"><summary style="cursor:pointer;color:var(--subtext);font-size:.85rem">Alle ${res.matches.length} grundsätzlich passenden Bestand-Posten anzeigen (Referenz)</summary>
+    <div class="tbl-wrap" style="margin-top:8px"><table>
+      <thead><tr>
+        <th>ID</th><th>Projekt</th><th>Typ</th><th>Maße (mm)</th><th>R-Strategie</th>
+        <th title="Maximal lieferbare Anfrage-Scheiben aus diesem Posten (vor globaler Plan-Aufteilung)">Lieferbar</th>
+        <th title="Restfläche pro Bestandsscheibe nach Zuschnitt">Verschnitt</th>
+        <th>Preis</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${res.matches.map(e=>{
+          const targetId = e._virtual ? e._parentId : e.id;
+          const virtBadge = e._virtual ? `<span class="virtual-badge" title="Unbeschichtete Floatglas-Scheibe aus Isolierglas-Aufbau (${escapeHtml(e._parentId)})">📦 aus ISO-Aufbau</span>` : '';
+          const cuts = e._cuts||1;
+          const deliverable = e._deliverable!=null ? e._deliverable : (e.qty||1);
+          const liefertCell = cuts>1
+            ? `${deliverable} <span style="color:var(--subtext);font-size:.75rem">(${cuts}/Stk)</span>`
+            : `${e.qty||1}`;
+          const wasteCell = hasDims ? `${((e._wastePct||0)*100).toFixed(0)}%` : '–';
+          return `<tr onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
+          <td><span class="mono">${escapeHtml(e.id)}</span>${e._rotated?'<span class="rotated-badge" title="passt nur gedreht">↻</span>':''}${virtBadge}</td>
+          <td>${escapeHtml((e.projLabel||e.building||'–').slice(0,32))}</td>
+          <td>${escapeHtml(e.type)}</td>
+          <td style="white-space:nowrap">${dim(e)}</td>
+          <td>${rTag(e.rStrat)}</td>
+          <td style="white-space:nowrap">${liefertCell}</td>
+          <td>${wasteCell}</td>
+          <td style="white-space:nowrap">${fmt(e.price)}</td>
+          <td>${badge(e.status)}</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail('${targetId}')">Details</button></td>
+        </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div></details>`;
   }
-  // Empfohlene Kombination — zeigen, wenn Multi-Posten nötig sind, Mehrfach-Zuschnitt
-  // pro Stück greift, oder die Anfrage nicht voll gedeckt werden kann.
-  const combo = res.combo;
-  if(combo && combo.picks && combo.picks.length>0
-     && (combo.multiPosten || (combo.picks[0].cuts||1)>1 || !combo.complete)){
-    const cls = combo.complete ? 'recommend' : 'recommend partial';
-    const icon = combo.complete ? '🎯' : '⚠';
-    const title = combo.complete ? 'Empfohlene Kombination' : 'Bestand reicht nicht — beste Teilabdeckung';
-    const summary = `Deckt <strong>${combo.covered}/${r.qty}</strong> Anfrage-St${r.qty===1?'ück':'ücke'} aus ${combo.picks.length} Posten · ⌀ Verschnitt <strong>${(combo.comboWastePct*100).toFixed(0)}%</strong>`;
-    html += `<div class="${cls}">
-      <div class="recommend-title">${icon} ${title}</div>
-      <div class="recommend-summary">${summary}</div>
-      <ul>${combo.picks.map(p=>{
-        const pid = p.e._virtual ? p.e._parentId : p.e.id;
-        const cutInfo = p.cuts>1 ? ` (je ${p.cuts} Scheiben/Stück)` : '';
-        const rotInfo = p.rotated ? ' · gedreht' : '';
-        const wasteInfo = p.wastePct>0 ? ` · Verschnitt ${(p.wastePct*100).toFixed(0)}%` : '';
-        return `<li onclick="closeMatchAndOpen('${pid}')" style="cursor:pointer">
-          <div><strong>${p.sheetsTaken}×</strong> aus <span class="pick-id">${escapeHtml(p.e.id)}</span> → <strong>${p.delivered}</strong> Anfrage-Scheibe${p.delivered===1?'':'n'}</div>
-          <div class="pick-detail">${escapeHtml(p.e.type)}${cutInfo}${rotInfo}${wasteInfo}</div>
-        </li>`;
-      }).join('')}</ul>
-    </div>`;
-  }
-  const hasDims = (r.w!=null || r.h!=null);
-  // Treffer-Tabelle (Einzeltreffer, nach Verschnitt sortiert)
-  html += `<div class="tbl-wrap"><table>
-    <thead><tr>
-      <th>ID</th><th>Projekt</th><th>Typ</th><th>Maße (mm)</th><th>R-Strategie</th>
-      <th title="Maximal lieferbare Anfrage-Scheiben aus diesem Posten">Liefert</th>
-      <th title="Restfläche pro Bestandsscheibe nach Zuschnitt">Verschnitt</th>
-      <th>Preis</th><th>Status</th><th></th>
-    </tr></thead>
-    <tbody>
-      ${res.matches.map(e=>{
-        const targetId = e._virtual ? e._parentId : e.id;
-        const virtBadge = e._virtual ? `<span class="virtual-badge" title="Unbeschichtete Floatglas-Scheibe aus Isolierglas-Aufbau (${escapeHtml(e._parentId)})">📦 aus ISO-Aufbau</span>` : '';
-        const cuts = e._cuts||1;
-        const deliverable = e._deliverable!=null ? e._deliverable : (e.qty||1);
-        const liefertCell = cuts>1
-          ? `${deliverable} <span style="color:var(--subtext);font-size:.75rem">(${cuts}/Stk)</span>`
-          : `${e.qty||1}`;
-        const wasteCell = hasDims ? `${((e._wastePct||0)*100).toFixed(0)}%` : '–';
-        return `<tr onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
-        <td><span class="mono">${escapeHtml(e.id)}</span>${e._rotated?'<span class="rotated-badge" title="passt nur gedreht">↻</span>':''}${virtBadge}</td>
-        <td>${escapeHtml((e.projLabel||e.building||'–').slice(0,32))}</td>
-        <td>${escapeHtml(e.type)}</td>
-        <td style="white-space:nowrap">${dim(e)}</td>
-        <td>${rTag(e.rStrat)}</td>
-        <td style="white-space:nowrap">${liefertCell}</td>
-        <td>${wasteCell}</td>
-        <td style="white-space:nowrap">${fmt(e.price)}</td>
-        <td>${badge(e.status)}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail('${targetId}')">Details</button></td>
-      </tr>`;
-      }).join('')}
-    </tbody>
-  </table></div>`;
+  if(!html) html = '<div style="padding:10px;color:var(--subtext)">Keine passenden Posten im Bestand.</div>';
   return html;
 }
 
