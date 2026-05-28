@@ -742,12 +742,17 @@ async function driveLoad(){
       data = resp.result;
     }
     if(Array.isArray(data)){
-      db = data;
+      // Race-Schutz: lokal frisch geseedete DEMO-Posten, die in Drive noch nicht sind, behalten.
+      // Sonst gehen sie verloren, wenn driveLoad nach dem Initial-Seed läuft.
+      const driveIds = new Set(data.map(e=>e.id));
+      const localDemoMissing = db.filter(e => String(e.building||'').startsWith('DEMO – ') && !driveIds.has(e.id));
+      db = data.concat(localDemoMissing);
       localStorage.setItem(KEY, JSON.stringify(db));
+      if(localDemoMissing.length > 0) persist();  // erzwinge Drive-Sync der zurückgehaltenen DEMOs
       if(typeof seedDemoIfNeeded === 'function') seedDemoIfNeeded();
       if(typeof filter === 'function') filter();
       driveLastSync = new Date();
-      toast(`Aus Drive geladen: ${db.length} Einträge`,'ok');
+      toast(`Aus Drive geladen: ${db.length} Einträge${localDemoMissing.length?` (+${localDemoMissing.length} DEMO lokal ergänzt)`:''}`,'ok');
     }
   }catch(e){
     console.error(e);
@@ -2045,7 +2050,7 @@ const DEMO_DATA_FACTORY = ()=>([
     build: _isoBuild(3, [_isoLayer(6,2), _isoLayer(4), _isoLayer(4,5)], [16,16]), at:'2024-06-02T10:00:00Z'})
 ]);
 
-const DEMO_SEED_FLAG = 'refloat_demo_seeded_v1';
+const DEMO_SEED_FLAG = 'refloat_demo_seeded_v2';
 
 // Beim ersten Start einmalig 20 DEMO-Posten in den Bestand legen.
 // Wird durch persist() automatisch auch nach Drive synchronisiert (falls verbunden).
