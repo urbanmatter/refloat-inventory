@@ -262,10 +262,15 @@ tr:last-child td{border-bottom:none}
 @keyframes tin{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
 
 @media print{
-  body *{visibility:hidden}
-  #parea,#parea *{visibility:visible}
-  #parea{position:fixed;top:0;left:0;width:100%;background:#fff;padding:20px;z-index:9999}
+  /* Alles außer #parea entfernen — nicht nur verstecken, sondern aus dem Layout-Flow nehmen.
+     Sonst kann der Browser die Seiten nicht sauber umbrechen und der parea-Inhalt wird
+     pro Druckseite mehrfach gerendert (alter Bug bei position:fixed mit langem Content). */
+  body > *:not(#parea){display:none !important}
+  #parea{display:block !important;position:static !important;width:auto;padding:0;z-index:auto;background:#fff;color:#1A1A2E}
   @page{margin:15mm}
+  .pdf-page{page-break-after:always}
+  .pdf-page:last-child{page-break-after:auto}
+  .pdf-page svg{max-width:100%;height:auto}
 }
 
 /* ── Projekt-Liste & Detail ── */
@@ -286,7 +291,8 @@ tr:last-child td{border-bottom:none}
 .alloc-card .alloc-hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)}
 .alloc-card .alloc-hd .req-tag{font-weight:700;color:var(--primary);font-size:.95rem}
 .alloc-card .alloc-hd .req-meta{font-size:.82rem;color:var(--subtext)}
-.alloc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:8px}
+.alloc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:8px}
+@media(max-width:760px){.alloc-grid{grid-template-columns:1fr}}
 .cut-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px}
 .cut-card .stock-id{font-family:ui-monospace,monospace;font-size:.78rem;font-weight:700;color:var(--secondary);cursor:pointer}
 .cut-card .stock-id:hover{text-decoration:underline}
@@ -1404,13 +1410,19 @@ function groupAllocsByCutPlan(allocs){
 }
 
 // ─── Schneidskizze als SVG ───
-// Zeichnet eine Bestand-Scheibe (stockW × stockH) mit der 15-mm-Randreserve und
-// dem Raster der Anfrage-Zuschnitte (reqW × reqH, ggf. gedreht). Verschnitt-Flächen
-// sind heller hinterlegt. Maße sind außen beschriftet.
-function cutLayoutSVG(g){
+// Zeichnet eine Bestand-Scheibe (stockW × stockH) mit dem Raster der Anfrage-Zuschnitte.
+// WICHTIG zur Geometrie: analyzeDimsFit zieht 15 mm Randreserve nur EINMAL pro Achse ab
+// (Math.floor((avail − 15) / need)), nicht zweimal. Das entspricht der Praxis: die Scheiben
+// werden in EINER Ecke der Bestand-Glasplatte ausgeschnitten, an zwei Seiten direkt am Rand
+// (ohne Randabschnitt), die 15 mm bleiben dann als Verschnitt nur an den GEGENÜBERLIEGENDEN
+// beiden Seiten. Die Skizze stellt das so dar: Cuts beginnen oben-links (am Bestand-Rand),
+// Verschnittfläche liegt rechts und unten.
+//
+// `size` (optional): 'small' (default, Detailansicht) oder 'large' (PDF).
+function cutLayoutSVG(g, size){
   const stockW = +g.stockW || 0, stockH = +g.stockH || 0;
   const reqW0 = +g.reqW || 0, reqH0 = +g.reqH || 0;
-  if(stockW <= 0 || stockH <= 0) return '<div style="color:var(--subtext);font-size:.8rem">Maße fehlen</div>';
+  if(stockW <= 0 || stockH <= 0) return '<div style="color:#6B7280;font-size:.8rem">Maße fehlen</div>';
   // Bei Rotation: Anfragemaße entlang Stock-Achsen vertauscht zeichnen
   const reqW = g.rotated ? reqH0 : reqW0;
   const reqH = g.rotated ? reqW0 : reqH0;
@@ -1418,39 +1430,44 @@ function cutLayoutSVG(g){
   // Anzahl Zuschnitte pro Achse (gleiche Formel wie analyzeDimsFit)
   const cols = reqW > 0 ? Math.floor(Math.max(0, stockW - S) / reqW) : 0;
   const rows = reqH > 0 ? Math.floor(Math.max(0, stockH - S) / reqH) : 0;
-  // Skalierung: max 240px Breite, proportional
-  const MAX_W = 240, MAX_H = 200;
+  // Skalierung: gross für PDF, klein für Detail-Card
+  const MAX_W = size === 'large' ? 640 : 240;
+  const MAX_H = size === 'large' ? 480 : 200;
   const scale = Math.min(MAX_W/stockW, MAX_H/stockH);
   const W = stockW * scale, H = stockH * scale;
-  const sS = S * scale;       // Rand in px
   const rw = reqW * scale, rh = reqH * scale;
+  // Maße der ausgenutzten Region (alle Cuts zusammen)
+  const usedW = cols * rw, usedH = rows * rh;
   // Padding für Beschriftungen
-  const pad = 22;
+  const pad = size === 'large' ? 36 : 22;
+  const fontSize = size === 'large' ? 16 : 10;
   const vbW = W + 2*pad, vbH = H + 2*pad + 6;
-  // Bestand-Rechteck (Verschnitt-Hintergrund)
-  let svg = `<svg viewBox="0 0 ${vbW.toFixed(1)} ${vbH.toFixed(1)}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schneidskizze">`;
-  // Stock-Rechteck
+  let svg = `<svg viewBox="0 0 ${vbW.toFixed(1)} ${vbH.toFixed(1)}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Schneidskizze">`;
+  // Bestand-Scheibe als heller Hintergrund (= Verschnitt-Hintergrund)
   svg += `<rect x="${pad}" y="${pad}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" fill="#FFF3D6" stroke="#D4A155" stroke-width="1"/>`;
-  // Nutzbarer Bereich (innerhalb der 15 mm)
-  if(W - 2*sS > 0 && H - 2*sS > 0){
-    svg += `<rect x="${(pad+sS).toFixed(1)}" y="${(pad+sS).toFixed(1)}" width="${(W-2*sS).toFixed(1)}" height="${(H-2*sS).toFixed(1)}" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="0.5" stroke-dasharray="3,2"/>`;
+  // Verschnittstreifen rechts und unten dezent abheben (heller, leicht warmer Ton)
+  if(usedW > 0 && W - usedW > 0.5){
+    svg += `<rect x="${(pad+usedW).toFixed(1)}" y="${pad}" width="${(W-usedW).toFixed(1)}" height="${H.toFixed(1)}" fill="#F5E0B3" fill-opacity="0.6"/>`;
   }
-  // Zuschnitt-Zellen
+  if(usedH > 0 && H - usedH > 0.5){
+    svg += `<rect x="${pad}" y="${(pad+usedH).toFixed(1)}" width="${usedW.toFixed(1)}" height="${(H-usedH).toFixed(1)}" fill="#F5E0B3" fill-opacity="0.6"/>`;
+  }
+  // Cut-Zellen, oben-links beginnend (zwei Seiten direkt am Bestand-Rand)
   if(cols > 0 && rows > 0){
     for(let cx=0; cx<cols; cx++){
       for(let cy=0; cy<rows; cy++){
-        const x = pad + sS + cx*rw;
-        const y = pad + sS + cy*rh;
+        const x = pad + cx*rw;
+        const y = pad + cy*rh;
         svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${rw.toFixed(1)}" height="${rh.toFixed(1)}" fill="#7C6EF0" fill-opacity="0.55" stroke="#5B4BE1" stroke-width="0.8"/>`;
       }
     }
   }
   // Beschriftungen — Stock-Breite (unten), Stock-Höhe (links)
-  svg += `<text x="${(pad+W/2).toFixed(1)}" y="${(pad+H+15).toFixed(1)}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#6B7280">${stockW} mm</text>`;
-  svg += `<text x="${(pad-6).toFixed(1)}" y="${(pad+H/2).toFixed(1)}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#6B7280" transform="rotate(-90 ${(pad-6).toFixed(1)} ${(pad+H/2).toFixed(1)})">${stockH} mm</text>`;
+  svg += `<text x="${(pad+W/2).toFixed(1)}" y="${(pad+H+fontSize+4).toFixed(1)}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="${fontSize}" fill="#6B7280">${stockW} mm</text>`;
+  svg += `<text x="${(pad-8).toFixed(1)}" y="${(pad+H/2).toFixed(1)}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="${fontSize}" fill="#6B7280" transform="rotate(-90 ${(pad-8).toFixed(1)} ${(pad+H/2).toFixed(1)})">${stockH} mm</text>`;
   // Anzahl Zuschnitte (oben rechts)
   const cutsLabel = (cols>0 && rows>0) ? `${cols}×${rows} = ${cols*rows} Stk` : '0 Stk';
-  svg += `<text x="${(pad+W).toFixed(1)}" y="${(pad-6).toFixed(1)}" text-anchor="end" font-family="system-ui,sans-serif" font-size="10" font-weight="700" fill="#5B4BE1">${cutsLabel}</text>`;
+  svg += `<text x="${(pad+W).toFixed(1)}" y="${(pad-6).toFixed(1)}" text-anchor="end" font-family="system-ui,sans-serif" font-size="${fontSize}" font-weight="700" fill="#5B4BE1">${cutsLabel}</text>`;
   svg += `</svg>`;
   return svg;
 }
@@ -1499,6 +1516,8 @@ function deleteProject(id){
 }
 
 // ─── PDF-Export Projekt ───
+// Layout: Seite 1 = alle textlichen Inhalte (Header, Meta, Stats, Anfrage-Tabelle).
+// Ab Seite 2 = pro Schnittplan-Gruppe eine eigene Seite mit einer großen Skizze.
 function pdfProject(id){
   const p = projects.find(x => x.id === id);
   if(!p){ toast('Projekt nicht gefunden.','err'); return; }
@@ -1513,7 +1532,7 @@ function pdfProject(id){
     if(a.reqW>0 && a.reqH>0) totalUsedArea += (a.delivered||0) * a.reqW * a.reqH;
   });
   const totalWastePct = totalSheetArea > 0 ? Math.max(0, 1 - totalUsedArea/totalSheetArea) : 0;
-  // Anfrage-Übersicht
+  // Anfrage-Übersicht-Tabelle
   const reqRows = (p.requests||[]).map((r,i)=>{
     const allocs = (p.allocations||[]).filter(a => a.reqIdx === i);
     const covered = allocs.reduce((s,a)=>s+(a.delivered||0), 0);
@@ -1528,37 +1547,20 @@ function pdfProject(id){
       <td style="padding:6px 10px;font-weight:700;color:${demanded>0 && covered>=demanded?'#15803d':'#92400e'}">${covered}/${demanded}</td>
     </tr>`;
   }).join('');
-  // Pro Anfrage: Allokations-Cards (page-break-inside vermeidet, dass eine Karte zerrissen wird)
-  const allocBlocks = (p.requests||[]).map((r, reqIdx) => {
+  // Flache Liste aller Schnittplan-Gruppen (eine pro PDF-Seite ab Seite 2)
+  const skizzen = [];
+  (p.requests||[]).forEach((r, reqIdx) => {
     const allocs = (p.allocations||[]).filter(a => a.reqIdx === reqIdx);
-    if(allocs.length === 0){
-      return `<div style="page-break-inside:avoid;border:1px solid #eee;border-radius:10px;padding:12px;margin-bottom:14px">
-        <strong>${escapeHtml(r.reqId||'P'+(reqIdx+1))}</strong> <span style="color:#6B7280">— keine Bestand-Scheiben zugeordnet</span></div>`;
-    }
+    if(allocs.length === 0) return;
     const groups = groupAllocsByCutPlan(allocs);
-    const reqMeta = [r.type, r.d!=null?r.d+' mm':null, (r.w!=null||r.h!=null)?(r.w||'?')+'×'+(r.h||'?')+' mm':null, r.coating, r.color, r.qty!=null?r.qty+' Stk':null].filter(Boolean).join(' · ');
-    const cards = groups.map(gr => {
-      const stockIdList = gr.stockIds.join(', ');
-      const rotLabel = gr.rotated ? ' · gedreht' : '';
-      const svg = cutLayoutSVG(gr);
-      return `<div style="page-break-inside:avoid;display:inline-block;vertical-align:top;width:48%;background:#F8F8FC;border:1px solid #E5E7EB;border-radius:8px;padding:10px;margin:0 1% 10px 0;box-sizing:border-box">
-        <div style="font-family:ui-monospace,monospace;font-size:.78rem;font-weight:700;color:#1E3A5F">${escapeHtml(stockIdList)}${gr.sheetsTaken>1?` <span style="background:#5B4BE1;color:#fff;padding:1px 7px;border-radius:6px;font-size:.7rem">× ${gr.sheetsTaken}</span>`:''}</div>
-        <div style="font-size:.72rem;color:#6B7280;margin:4px 0 8px;line-height:1.4">
-          Bestand: ${gr.stockW}×${gr.stockH} mm → ${gr.cuts} Schnitt${gr.cuts===1?'':'e'} pro Scheibe${rotLabel}<br>
-          Anfrage: ${gr.reqW||'?'}×${gr.reqH||'?'} mm · ⌀ Verschnitt ${(gr.wastePct*100).toFixed(0)}%
-        </div>
-        <div style="background:#fff;border-radius:6px;padding:6px;text-align:center">${svg}</div>
-      </div>`;
-    }).join('');
-    return `<div style="page-break-inside:avoid;border:1px solid #E5E7EB;border-radius:10px;padding:14px;margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #E5E7EB;padding-bottom:8px;margin-bottom:10px">
-        <div><strong style="color:#5B4BE1">${escapeHtml(r.reqId||'P'+(reqIdx+1))}</strong> <span style="color:#6B7280;font-size:.85rem">${escapeHtml(reqMeta||'–')}</span></div>
-      </div>
-      <div>${cards}</div>
-    </div>`;
-  }).join('');
-  g0('parea').innerHTML = `
-<div style="font-family:Arial,sans-serif;max-width:820px;margin:0 auto;color:#1A1A2E">
+    groups.forEach((gr, gi) => {
+      skizzen.push({req:r, reqIdx, group:gr, groupIdx:gi, totalGroups:groups.length});
+    });
+  });
+  const today = new Date().toLocaleDateString('de-DE');
+  // Seite 1: Text & Tabelle
+  const page1 = `
+<div class="pdf-page" style="font-family:Arial,sans-serif;max-width:820px;margin:0 auto;color:#1A1A2E">
   <div style="background:#5B4BE1;color:#fff;padding:22px 26px;border-radius:16px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center">
     <div>
       <div style="font-size:1.4rem;font-weight:700">ReFloat Inventory</div>
@@ -1566,7 +1568,7 @@ function pdfProject(id){
     </div>
     <div style="text-align:right">
       <div style="font-size:1.05rem;font-weight:700;letter-spacing:1px">${escapeHtml(p.id)}</div>
-      <div style="opacity:.85;font-size:.8rem">${new Date().toLocaleDateString('de-DE')}</div>
+      <div style="opacity:.85;font-size:.8rem">${today}</div>
     </div>
   </div>
   <h1 style="font-size:1.4rem;margin:0 0 6px">${escapeHtml(p.name||'(ohne Name)')}</h1>
@@ -1590,13 +1592,52 @@ function pdfProject(id){
     </tr></thead>
     <tbody>${reqRows}</tbody>
   </table>
-  <h2 style="font-size:1.05rem;margin:20px 0 10px">Zuordnung & Schneidpläne</h2>
-  ${allocBlocks}
+  <div style="margin-top:18px;color:#6B7280;font-size:.82rem;font-style:italic">
+    Ab der nächsten Seite folgt pro Bestand-Schnittplan eine Skizze (${skizzen.length} Skizze${skizzen.length===1?'':'n'} insgesamt).
+  </div>
   <div style="border-top:2px solid #5B4BE1;padding-top:10px;margin-top:24px;display:flex;justify-content:space-between;font-size:.72rem;color:#6B7280">
     <div>ReFloat Inventory – Projekt-Schneidplan</div>
-    <div>${new Date().toLocaleDateString('de-DE')} · ${escapeHtml(p.id)}</div>
+    <div>${today} · ${escapeHtml(p.id)} · Seite 1</div>
   </div>
 </div>`;
+  // Seiten 2..N: je eine Skizze
+  const skizzenPages = skizzen.map((s, i) => {
+    const r = s.req, gr = s.group;
+    const reqMeta = [r.type, r.d!=null?r.d+' mm':null, (r.w!=null||r.h!=null)?(r.w||'?')+'×'+(r.h||'?')+' mm':null, r.coating, r.color, r.qty!=null?r.qty+' Stk':null].filter(Boolean).join(' · ');
+    const stockIdList = gr.stockIds.join(', ');
+    const rotLabel = gr.rotated ? ' · gedreht um 90°' : '';
+    const svg = cutLayoutSVG(gr, 'large');
+    const pageNum = i + 2;
+    return `
+<div class="pdf-page" style="font-family:Arial,sans-serif;max-width:820px;margin:0 auto;color:#1A1A2E">
+  <div style="border-bottom:2px solid #5B4BE1;padding-bottom:10px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:baseline">
+    <div>
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#6B7280;letter-spacing:.05em">Schneidplan ${i+1} / ${skizzen.length}</div>
+      <div style="font-size:1.15rem;font-weight:700;color:#5B4BE1;margin-top:2px">${escapeHtml(r.reqId||'P'+(s.reqIdx+1))} <span style="color:#1A1A2E;font-weight:500;font-size:.9rem">— ${escapeHtml(reqMeta||'–')}</span></div>
+    </div>
+    <div style="text-align:right;font-size:.78rem;color:#6B7280">${escapeHtml(p.id)}</div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">
+    <div style="background:#F8F8FC;padding:10px;border-radius:8px"><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:3px">Bestand</div><div style="font-family:ui-monospace,monospace;font-size:.82rem;font-weight:700;color:#1E3A5F">${escapeHtml(stockIdList)}</div></div>
+    <div style="background:#F8F8FC;padding:10px;border-radius:8px"><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:3px">Scheiben</div><div style="font-size:.95rem;font-weight:700;color:#5B4BE1">${gr.sheetsTaken}× Bestand → ${gr.delivered}× Anfrage</div></div>
+    <div style="background:#F8F8FC;padding:10px;border-radius:8px"><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:3px">⌀ Verschnitt</div><div style="font-size:.95rem;font-weight:700;color:#5B4BE1">${(gr.wastePct*100).toFixed(0)}%</div></div>
+  </div>
+  <div style="text-align:center;font-size:.85rem;color:#6B7280;margin-bottom:14px">
+    Bestand: <strong style="color:#1A1A2E">${gr.stockW}×${gr.stockH} mm</strong> ·
+    Anfrage: <strong style="color:#1A1A2E">${gr.reqW||'?'}×${gr.reqH||'?'} mm</strong> ·
+    ${gr.cuts} Schnitt${gr.cuts===1?'':'e'} pro Bestand-Scheibe${rotLabel}
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px;text-align:center">${svg}</div>
+  <div style="margin-top:12px;font-size:.75rem;color:#6B7280;line-height:1.5">
+    <strong>Lesehilfe:</strong> Die Anfrage-Scheiben (violett) werden in einer Ecke der Bestand-Scheibe geschnitten und liegen an zwei Seiten direkt am Rand. Der Verschnittstreifen (hellgelb) rechts und unten enthält die 15 mm-Randreserve plus übrigen Rest.
+  </div>
+  <div style="border-top:1px solid #E5E7EB;padding-top:8px;margin-top:18px;display:flex;justify-content:space-between;font-size:.7rem;color:#6B7280">
+    <div>ReFloat Inventory – Projekt-Schneidplan</div>
+    <div>${today} · ${escapeHtml(p.id)} · Seite ${pageNum}</div>
+  </div>
+</div>`;
+  }).join('');
+  g0('parea').innerHTML = page1 + skizzenPages;
   g0('parea').style.display = 'block';
   window.print();
   setTimeout(()=>{ g0('parea').style.display='none'; g0('parea').innerHTML=''; }, 800);
