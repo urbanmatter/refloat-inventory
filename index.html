@@ -118,6 +118,15 @@ input.ro,input[readonly]{background:var(--bg);color:var(--subtext);cursor:not-al
 .recommend li{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.85rem}
 .recommend li .pick-id{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;color:var(--secondary)}
 .recommend li .pick-detail{color:var(--subtext);font-size:.78rem;margin-top:2px}
+.option-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.option-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:.15s}
+.option-card:hover{border-color:var(--accent)}
+.option-card.active{border-color:var(--primary);background:#F4F2FF;box-shadow:0 0 0 1px var(--primary)}
+.option-head{display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:600;margin-bottom:6px}
+.option-tag{color:var(--primary)}
+.option-body{display:flex;flex-direction:column;gap:4px;font-size:.85rem}
+.option-post{padding:4px 0}
+.option-post .pick-id{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;color:var(--secondary)}
 .rotated-badge{display:inline-block;background:#7C6EF0;color:#fff;font-size:.7rem;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
 .virtual-badge{display:inline-block;background:#1E3A5F;color:#fff;font-size:.7rem;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
 .req-meta{color:var(--subtext);font-size:.85rem;display:flex;flex-wrap:wrap;gap:14px;margin-top:4px}
@@ -1892,125 +1901,57 @@ function matchOne(req){
     if(a._wastePct !== b._wastePct) return a._wastePct - b._wastePct;
     return (b._deliverable||0) - (a._deliverable||0);
   });
-  // Empfohlene Multi-Posten-Kombination (Greedy nach Verschnitt)
-  const combo = buildCombo(req, matches);
-  return { matches, failByCriterion, wouldPassIfIgnored, applied, combo };
+  // matchOne liefert nur noch Transparenz-Info (welche Kriterien sind zu eng).
+  // Die eigentliche Allokation übernimmt der interaktive Allokator (buildOptions/selectOption).
+  return { matches, failByCriterion, wouldPassIfIgnored, applied };
 }
 
-// Greedy-Kombination: nimm Posten nach aufsteigendem Verschnitt, bis die Anfrage-Stückzahl
-// gedeckt ist. Pro Posten werden so viele Bestand-Stücke "verbraucht" wie nötig (ceil),
-// aber nicht mehr als verfügbar (cap auf e.qty). Sub-Treffer aus einem ISO und der ISO
-// selbst kollidieren nicht, weil bei Floatglas-Anfragen der Original-ISO über crit_type
-// rausfällt.
-function buildCombo(req, matches){
-  if(req.qty==null || !matches.length) return null;
-  let remaining = req.qty;
-  const picks = [];
-  let usedArea = 0, totalArea = 0;
-  for(const e of matches){
-    if(remaining <= 0) break;
-    const cuts = e._cuts || 1;
-    const stock = Number(e.qty)||0;
-    if(cuts<=0 || stock<=0) continue;
-    const sheetsNeeded = Math.ceil(remaining / cuts);
-    const sheetsTaken = Math.min(sheetsNeeded, stock);
-    const delivered = Math.min(sheetsTaken * cuts, remaining);
-    picks.push({
-      e,
-      sheetsTaken,
-      cuts,
-      delivered,
-      // Pro-Stück-Verschnitt aus analyzeDimsFit; reicht für Anzeige
-      wastePct: e._wastePct || 0,
-      rotated: !!e._rotated
-    });
-    remaining -= delivered;
-    // Flächen-Buchhaltung für ⌀-Verschnitt der ganzen Kombi
-    const ew=+e.w||0, eh=+e.h||0, rw=+req.w||0, rh=+req.h||0;
-    if(ew>0 && eh>0){
-      totalArea += sheetsTaken * ew * eh;
-      if(rw>0 && rh>0) usedArea += delivered * rw * rh;
-    }
+// ════════ Interaktiver Allokator: Vorschläge pro Position, User wählt ════════
+// Pro Anfrage-Position berechnet das Tool max. 3 Vorschläge (Greedy-Kombi gegen den
+// VERBLEIBENDEN Bestand). Vorschlag 1 ist automatisch vorausgewählt; bei Änderung
+// einer früheren Position werden alle nachfolgenden Picks neu berechnet (sonst gäbe
+// es Inkonsistenzen mit dem laufenden Bestandsverbrauch).
+//
+// KEIN Mixed-Cutting verschiedener Anfrage-Positionen aus einer Bestand-Scheibe.
+// Pro Bestand-Scheibe gilt: immer EINE Anfrage-Position, gleiche Größe im Raster.
+// Mehrfach-Zuschnitt gleicher Größe + Drehung + 15 mm-Reserve bleiben aktiv.
+
+// Gibt die passenden Bestand-Posten für `req` aus `stockList` zurück, annotiert mit
+// _cuts/_wastePct/_deliverable und nach Verschnitt aufsteigend sortiert.
+// `stockList` ist eine Liste Bestand-Einträge mit `_remaining` als Verbrauchszähler.
+function findMatchesAgainst(req, stockList){
+  const expanded = (req.type === 'Floatglas')
+    ? expandStockWithRemaining(req, stockList)
+    : stockList;
+  const matches = [];
+  for(const e of expanded){
+    if((e._remaining||0) <= 0) continue;
+    if(crit_status(req, e) === false) continue;
+    if(crit_type(req, e) === false) continue;
+    if(crit_thickness(req, e) === false) continue;
+    if(crit_coating(req, e) === false) continue;
+    if(crit_color(req, e) === false) continue;
+    const fit = (req.w!=null || req.h!=null) ? analyzeDimsFit(req, e) : {n:1, rotated:false, wastePct:0};
+    if(fit.n < 1) continue;
+    matches.push(Object.assign({}, e, {
+      _rotated: fit.rotated,
+      _cuts: fit.n,
+      _wastePct: fit.wastePct,
+      _deliverable: fit.n * (e._remaining||0)
+    }));
   }
-  const comboWastePct = totalArea>0 ? Math.max(0, 1 - usedArea/totalArea) : 0;
-  return {
-    picks,
-    covered: req.qty - remaining,
-    remaining,
-    complete: remaining <= 0,
-    multiPosten: picks.length >= 2,
-    comboWastePct
-  };
+  matches.sort((a,b)=>{
+    if(a._wastePct !== b._wastePct) return a._wastePct - b._wastePct;
+    return (b._deliverable||0) - (a._deliverable||0);
+  });
+  return matches;
 }
 
-// ════════ Globaler Plan: alle Anfrage-Positionen gemeinsam, kein Doppelmatch ════════
-// Stufe B: 2D-Bin-Packing mit Mixed-Cutting. Mehrere unterschiedlich große Anfrage-Stücke
-// können aus EINER Bestandsscheibe geschnitten werden (Shelf-Packing FFDH-Heuristik).
-// Der Bestand wird über ALLE Anfrage-Positionen gemeinsam verteilt — ein Bestand-Stück
-// kann nicht zweimal vergeben werden.
-
-// 2D-Bin-Packing-Heuristik (Shelf-Packing, First Fit Decreasing Height).
-// stockW × stockH = Bestandsmaße. demands = [{w,h,reqIdx,remaining_count}, ...].
-// `remaining_count` wird IN-PLACE dekrementiert pro platziertem Stück.
-// margin = Randreserve in mm (einseitig pro Achse: nutzbar = stock - margin).
-// Liefert Liste platzierter Stücke mit (x, y, rotated).
-function packSheet(stockW, stockH, demands, margin){
-  const innerW = stockW - margin;
-  const innerH = stockH - margin;
-  if(innerW <= 0 || innerH <= 0) return [];
-  const placed = [];
-  let currentY = 0;
-  while(currentY < innerH){
-    const remH = innerH - currentY;
-    // Bestimme Regalhöhe als max Stück-Höhe, die noch in remH passt (beide Orientierungen)
-    let shelfH = 0;
-    for(const d of demands){
-      if(d.remaining_count <= 0) continue;
-      if(d.h <= remH && d.w <= innerW) shelfH = Math.max(shelfH, d.h);
-      if(d.w <= remH && d.h <= innerW) shelfH = Math.max(shelfH, d.w);
-    }
-    if(shelfH === 0) break;
-    // Platziere Stücke nebeneinander; pro Schritt das größte verfügbare wählen
-    let currentX = 0;
-    while(currentX < innerW){
-      const remW = innerW - currentX;
-      let candidates = [];
-      for(const d of demands){
-        if(d.remaining_count <= 0) continue;
-        if(d.h <= shelfH && d.w <= remW){
-          candidates.push({d, w:d.w, h:d.h, rotated:false, area:d.w*d.h});
-        }
-        if(d.w !== d.h && d.w <= shelfH && d.h <= remW){
-          candidates.push({d, w:d.h, h:d.w, rotated:true, area:d.w*d.h});
-        }
-      }
-      if(candidates.length === 0) break;
-      candidates.sort((a,b)=>b.area - a.area);
-      const best = candidates[0];
-      placed.push({reqIdx: best.d.reqIdx, w: best.d.w, h: best.d.h, x: currentX, y: currentY, rotated: best.rotated});
-      best.d.remaining_count -= 1;
-      currentX += best.w;
-    }
-    currentY += shelfH;
-  }
-  return placed;
-}
-
-// Match-Kriterien-Check OHNE qty/dims (die werden über Bin-Packing entschieden)
-function meetsGroupCriteria(criteria, e){
-  if(criteria.type != null && String(e.type||'').trim() !== criteria.type) return false;
-  if(criteria.d != null && Number(e.d||e.glassMm||0) !== criteria.d) return false;
-  if(criteria.coating != null && String(e.coating||'').trim() !== criteria.coating) return false;
-  if(criteria.color != null && String(e.color||'').trim() !== criteria.color) return false;
-  if(e.status !== 'Verfügbar') return false;
-  return true;
-}
-
-// Wie expandDbForRequest, aber initialisiert _remaining (eigener Verbrauchszähler für globalen Plan)
-function expandStockGlobal(criteria, availableStock){
-  if(criteria.type !== 'Floatglas') return availableStock;
+// ISO-Sub-Treffer wie expandDbForRequest, aber initialisiert/erbt `_remaining`.
+function expandStockWithRemaining(req, stockList){
+  if(req.type !== 'Floatglas') return stockList;
   const out = [];
-  for(const e of availableStock){
+  for(const e of stockList){
     out.push(e);
     if(!e.build || e.build.kind !== 'iso' || !Array.isArray(e.build.lagen)) continue;
     const byD = new Map();
@@ -2024,124 +1965,168 @@ function expandStockGlobal(criteria, availableStock){
       const layerLabel = layerNums.length === 1
         ? `Pos ${2*layerNums[0]-1}/${2*layerNums[0]}`
         : layerNums.map(idx => `Pos ${2*idx-1}/${2*idx}`).join('+');
+      // _remaining für Sub-Treffer: eigener Zähler, max(parent._remaining × Lagenanzahl)
+      // Wenn parent._remaining bereits durch frühere Picks reduziert wurde, gilt das auch
+      // für den Sub-Treffer. Pragmatische Annahme: pro Sub-Treffer-Eintrag ist
+      // (parent._remaining × layerCount) verfügbar. Da der Sub-Treffer in der Pick-Logik
+      // mit dem parent über _parentId verknüpft ist, wird parent._remaining direkt
+      // dekrementiert, wenn Sub-Treffer verbraucht wird.
+      const parentRem = Number(e._remaining)||0;
       out.push(Object.assign({}, e, {
         _virtual: true,
         _parentId: e.id,
+        _layerCount: layerNums.length,
         id: e.id + ' · ' + layerLabel,
         type: 'Floatglas',
-        d: d,
-        glassMm: d,
+        d: d, glassMm: d,
         build: null,
         coating: 'Keine',
-        _remaining: (Number(e.qty)||0) * layerNums.length
+        _remaining: parentRem * layerNums.length
       }));
     }
   }
   return out;
 }
 
-// Globaler Allokations-Algorithmus.
-// Gruppiert Anfragen nach gemeinsamen Match-Kriterien (Typ+Dicke+Beschichtung+Farbe).
-// Pro Gruppe: sortiert Bestand nach Fläche absteigend, schneidet pro Bestand-Stück mit
-// packSheet so viele unterschiedlich große Anfrage-Stücke wie möglich (Mixed-Cutting),
-// dekrementiert Bedarf und Bestand-Verfügbarkeit, geht zum nächsten Bestand-Stück über.
-function globalAllocate(reqs){
-  if(!reqs || reqs.length === 0){
-    return {allocations:[], perRequest:[], totalWastePct:0, totalSheetsUsed:0, complete:true};
+// Erzeugt aus der nach-Verschnitt-sortierten Match-Liste bis zu 3 Vorschläge.
+// Vorschlag k startet mit matches[k] und wählt dann greedy weitere Posten.
+// Wenn zwei Vorschläge identisch wären (z.B. weil Vorschlag 1 schon mit einem Posten
+// die ganze qty deckt), wird der Duplikat-Vorschlag weggelassen.
+function buildOptions(req, matches){
+  const targetQty = Number(req.qty) || 0;
+  if(matches.length === 0 || targetQty <= 0) return [];
+  const options = [];
+  for(let start = 0; start < Math.min(3, matches.length); start++){
+    const opt = greedyFromStart(req, matches, start, targetQty);
+    if(opt && opt.posts.length > 0){
+      // Duplikat-Check: gleiche Posts + gleiche sheetsTaken? → skip
+      const dup = options.some(o => optionsAreEquivalent(o, opt));
+      if(!dup) options.push(opt);
+    }
   }
-  // Bestandskopie mit individuellem Verbrauchszähler
-  const availableStock = db.map(e => Object.assign({}, e, {_remaining: Number(e.qty)||0}));
-  // Demand-Tracker pro Anfrage-Position
-  const demandTracker = reqs.map((r, idx) => ({
-    reqIdx: idx, req: r,
-    demanded: Number(r.qty)||0,
-    remaining: Number(r.qty)||0,
-    allocated: 0
-  }));
-  // Gruppieren nach Match-Kriterien
-  const groups = new Map();
-  reqs.forEach((r, idx) => {
-    const key = [r.type||'', r.d==null?'':r.d, r.coating||'', r.color||''].join('|');
-    if(!groups.has(key)) groups.set(key, {criteria: r, requests: []});
-    groups.get(key).requests.push({req: r, idx});
-  });
+  return options;
+}
 
-  const allocations = [];
-  for(const [key, group] of groups.entries()){
-    const effectiveStock = expandStockGlobal(group.criteria, availableStock);
-    const matching = effectiveStock
-      .filter(e => meetsGroupCriteria(group.criteria, e))
-      .sort((a,b) => (Number(b.w)||0)*(Number(b.h)||0) - (Number(a.w)||0)*(Number(a.h)||0));
-    // Demands der Gruppe als gemeinsame Pack-Eingabe (mit Live-Bindung an demandTracker)
-    const groupDemands = group.requests
-      .filter(r => (Number(r.req.qty)||0) > 0 && (Number(r.req.w)||0) > 0 && (Number(r.req.h)||0) > 0)
-      .map(r => ({
-        w: Number(r.req.w), h: Number(r.req.h),
-        reqIdx: r.idx,
-        get remaining_count(){ return demandTracker[r.idx].remaining; },
-        set remaining_count(v){
-          const tr = demandTracker[r.idx];
-          const delta = tr.remaining - v;
-          tr.remaining = v;
-          tr.allocated += delta;
+function greedyFromStart(req, matches, startIdx, targetQty){
+  let remaining = targetQty;
+  const posts = [];
+  let usedArea = 0, totalArea = 0;
+  // Reihenfolge: matches[startIdx], dann matches[0..startIdx-1, startIdx+1..] in Reihenfolge
+  const order = [];
+  for(let i = startIdx; i < matches.length; i++) order.push(matches[i]);
+  for(let i = 0; i < startIdx; i++) order.push(matches[i]);
+  for(const m of order){
+    if(remaining <= 0) break;
+    const cuts = m._cuts || 1;
+    const stockAvail = Number(m._remaining)||0;
+    if(cuts <= 0 || stockAvail <= 0) continue;
+    const sheetsNeeded = Math.ceil(remaining / cuts);
+    const sheetsTaken = Math.min(sheetsNeeded, stockAvail);
+    const delivered = Math.min(sheetsTaken * cuts, remaining);
+    posts.push({
+      stockId: m.id,
+      virtual: !!m._virtual,
+      parentId: m._parentId || null,
+      layerCount: m._layerCount || 1,
+      stockW: Number(m.w)||0, stockH: Number(m.h)||0,
+      type: m.type,
+      projLabel: m.projLabel || m.building || '',
+      sheetsTaken, cuts, delivered,
+      wastePct: m._wastePct || 0,
+      rotated: !!m._rotated
+    });
+    remaining -= delivered;
+    const ew=Number(m.w)||0, eh=Number(m.h)||0, rw=Number(req.w)||0, rh=Number(req.h)||0;
+    if(ew>0 && eh>0){
+      totalArea += sheetsTaken * ew * eh;
+      if(rw>0 && rh>0) usedArea += delivered * rw * rh;
+    }
+  }
+  const comboWastePct = totalArea > 0 ? Math.max(0, 1 - usedArea/totalArea) : 0;
+  return {
+    posts,
+    covered: targetQty - remaining,
+    remaining,
+    complete: remaining <= 0,
+    comboWastePct
+  };
+}
+
+function optionsAreEquivalent(a, b){
+  if(a.posts.length !== b.posts.length) return false;
+  for(let i=0; i<a.posts.length; i++){
+    if(a.posts[i].stockId !== b.posts[i].stockId) return false;
+    if(a.posts[i].sheetsTaken !== b.posts[i].sheetsTaken) return false;
+  }
+  return true;
+}
+
+// Berechnet den Bestand-Snapshot nach Anwendung aller Picks vor Position `uptoIdx`.
+function computeAvailableAt(uptoIdx){
+  const stock = db.map(e => Object.assign({}, e, {_remaining: Number(e.qty)||0}));
+  const stockById = new Map(stock.map(s => [s.id, s]));
+  for(let i = 0; i < uptoIdx; i++){
+    const pick = matchPicks[i];
+    if(!pick) continue;
+    for(const p of pick.posts){
+      // virtual: dekrementiere den parent-ISO (sheetsTaken Sub-Lagen = ceil(sheetsTaken/layerCount) ISOs)
+      const targetId = p.virtual ? p.parentId : p.stockId;
+      const target = stockById.get(targetId);
+      if(target){
+        if(p.virtual){
+          const lc = p.layerCount || 1;
+          const parentDelta = Math.ceil(p.sheetsTaken / lc);
+          target._remaining = Math.max(0, target._remaining - parentDelta);
+        } else {
+          target._remaining = Math.max(0, target._remaining - p.sheetsTaken);
         }
-      }));
-    if(groupDemands.length === 0) continue;
-
-    for(const stock of matching){
-      while(stock._remaining > 0 && groupDemands.some(d => d.remaining_count > 0)){
-        const placed = packSheet(Number(stock.w)||0, Number(stock.h)||0, groupDemands, MATCH_SAFETY_MM);
-        if(placed.length === 0) break;
-        const usedArea = placed.reduce((s,p) => s + p.w*p.h, 0);
-        const totalArea = (Number(stock.w)||0) * (Number(stock.h)||0);
-        const wastePct = totalArea > 0 ? Math.max(0, 1 - usedArea/totalArea) : 0;
-        allocations.push({
-          stockId: stock.id,
-          stockOrigId: stock._virtual ? stock._parentId : stock.id,
-          stockW: Number(stock.w)||0, stockH: Number(stock.h)||0,
-          virtual: !!stock._virtual,
-          parentId: stock._parentId || null,
-          type: stock.type,
-          projLabel: stock.projLabel || stock.building || '',
-          price: Number(stock.price)||0,
-          placements: placed,
-          wastePct
-        });
-        stock._remaining -= 1;
       }
     }
   }
+  return stock;
+}
 
-  const perRequest = demandTracker.map(t => ({
-    reqIdx: t.reqIdx, req: t.req,
-    demanded: t.demanded, allocated: t.allocated, remaining: t.remaining,
-    stocks: allocations
-      .filter(a => a.placements.some(p => p.reqIdx === t.reqIdx))
-      .map(a => ({
-        stockId: a.stockId, virtual: a.virtual, parentId: a.parentId,
-        stockW: a.stockW, stockH: a.stockH,
-        count: a.placements.filter(p => p.reqIdx === t.reqIdx).length,
-        wastePct: a.wastePct
-      }))
-  }));
-  const totalUsedArea = allocations.reduce((s,a) => s + a.placements.reduce((s2,p) => s2 + p.w*p.h, 0), 0);
-  const totalSheetArea = allocations.reduce((s,a) => s + a.stockW*a.stockH, 0);
-  const totalWastePct = totalSheetArea > 0 ? Math.max(0, 1 - totalUsedArea/totalSheetArea) : 0;
-  return {
-    allocations, perRequest, totalWastePct,
-    totalSheetsUsed: allocations.length,
-    complete: demandTracker.every(t => t.remaining <= 0)
-  };
+// Optionen + autoApply für eine einzelne Position
+function autoPickFor(idx){
+  const req = matchReqs[idx];
+  const stock = computeAvailableAt(idx);
+  const matches = findMatchesAgainst(req, stock);
+  const options = buildOptions(req, matches);
+  matchOptions[idx] = options;
+  matchPicks[idx] = options[0] || null;
+}
+
+// Komplett-Neuberechnung ab Position `fromIdx` (inkl. fromIdx)
+function recomputeFromIdx(fromIdx){
+  for(let i = fromIdx; i < matchReqs.length; i++){
+    autoPickFor(i);
+  }
+}
+
+// User klickt einen Vorschlag → setze Pick und invalidiere die nachfolgenden Auswahlen
+function selectOption(idx, optionIdx){
+  const opts = matchOptions[idx] || [];
+  if(optionIdx < 0 || optionIdx >= opts.length) return;
+  matchPicks[idx] = opts[optionIdx];
+  recomputeFromIdx(idx + 1);
+  renderMatchTable();
+}
+
+// User setzt eine Position zurück → bedeutet: Auto-Vorauswahl (Vorschlag 1) wieder anwenden
+function resetPick(idx){
+  recomputeFromIdx(idx);
+  renderMatchTable();
 }
 
 // ─── State + UI ───
 let matchReqs = [];      // Array von normalisierten Anfragen
 let matchOpenIdx = null; // welche Zeile aufgeklappt ist
-let matchResults = [];   // Cache der Ergebnisse pro Anfrage (matchOne — für Transparenz-Anzeige)
-let matchPlan   = null;  // Globaler Allokationsplan (globalAllocate)
+let matchResults = [];   // Cache der matchOne-Ergebnisse (für Transparenz-Anzeige)
+let matchOptions = [];   // Pro Position: Array der berechneten Vorschläge (1-3)
+let matchPicks   = [];   // Pro Position: gewählter Vorschlag (oder null)
 
 function matchReset(){
-  matchReqs = []; matchOpenIdx = null; matchResults = []; matchPlan = null;
+  matchReqs = []; matchOpenIdx = null; matchResults = []; matchOptions = []; matchPicks = [];
   g0('m-file').value = '';
   g0('m-results-wrap').style.display = 'none';
   g0('m-tbody').innerHTML = '';
@@ -2182,13 +2167,13 @@ function matchLoadFile(file){
       }
       if(reqs.length===0){ toast('Keine Anfragezeilen gefunden','err'); return; }
       matchReqs = reqs;
-      matchResults = new Array(reqs.length).fill(null);
-      matchPlan = null;
+      matchResults = matchReqs.map(r => matchOne(r));
+      matchOptions = new Array(reqs.length).fill(null);
+      matchPicks = new Array(reqs.length).fill(null);
       matchOpenIdx = null;
       g0('m-results-wrap').style.display = 'block';
-      // Globalen Plan direkt berechnen — alle Positionen gemeinsam, keine Dopplungen.
-      matchPlan = globalAllocate(matchReqs);
-      matchResults = matchReqs.map(r => matchOne(r));
+      // Auto-Vorauswahl: pro Position Vorschlag 1 anwenden, Bestand fließend dekrementieren.
+      recomputeFromIdx(0);
       renderMatchTable();
       toast(`${reqs.length} Anfrage${reqs.length===1?'':'n'} geladen (Spalten erkannt: ${detected.length})`,'ok');
     }catch(err){
@@ -2227,12 +2212,13 @@ function parseCSVText(text){
 }
 
 function matchAll(){
-  // Globaler Plan: alle Anfrage-Positionen gemeinsam, Bestand wird gemeinsam aufgeteilt.
-  matchPlan = globalAllocate(matchReqs);
-  // matchOne pro Position weiterhin für Transparenz-Anzeige (welche Kriterien sind zu eng).
+  // Setzt alle Auswahlen zurück und triggert die Auto-Vorauswahl neu.
   matchResults = matchReqs.map(r => matchOne(r));
+  matchOptions = new Array(matchReqs.length).fill(null);
+  matchPicks = new Array(matchReqs.length).fill(null);
+  recomputeFromIdx(0);
   renderMatchTable();
-  toast('Anfragen abgeglichen (globaler Plan)','ok');
+  toast('Auswahl neu berechnet','ok');
 }
 
 function reqSummary(r){
@@ -2247,20 +2233,24 @@ function reqSummary(r){
 
 function renderMatchTable(){
   g0('m-cnt').textContent = matchReqs.length;
-  // Globale Plan-Box rendern
   const planBox = g0('m-plan');
-  if(planBox) planBox.innerHTML = renderGlobalPlan();
+  if(planBox) planBox.innerHTML = renderSummary();
   const rows = matchReqs.map((r,idx)=>{
     const isOpen = matchOpenIdx===idx;
-    // Status-Zelle aus dem globalen Plan
+    const pick = matchPicks[idx];
+    const demanded = Number(r.qty)||0;
     let statusCell;
-    if(matchPlan==null){
-      statusCell = `<button class="btn btn-soft btn-sm" onclick="event.stopPropagation();matchSingle(${idx})">Abgleichen</button>`;
+    if(pick == null){
+      const opts = matchOptions[idx];
+      if(opts && opts.length === 0){
+        statusCell = `<span class="hit-count zero">0/${demanded}</span>`;
+      } else {
+        statusCell = `<button class="btn btn-soft btn-sm" onclick="event.stopPropagation();matchSingle(${idx})">Abgleichen</button>`;
+      }
     } else {
-      const p = matchPlan.perRequest[idx];
-      const cls = p.allocated >= p.demanded ? 'ok' : (p.allocated > 0 ? 'partial' : 'zero');
-      const txt = p.allocated >= p.demanded ? '✓ ' + p.allocated + '/' + p.demanded
-                : (p.allocated > 0 ? p.allocated + '/' + p.demanded : '0/' + p.demanded);
+      const covered = pick.covered, full = covered >= demanded && demanded > 0;
+      const cls = full ? 'ok' : (covered > 0 ? 'partial' : 'zero');
+      const txt = full ? '✓ '+covered+'/'+demanded : covered+'/'+demanded;
       statusCell = `<span class="hit-count ${cls}">${txt}</span>`;
     }
     const tr = `<tr class="req-row ${isOpen?'open':''}" onclick="matchToggle(${idx})">
@@ -2279,57 +2269,62 @@ function renderMatchTable(){
   g0('m-tbody').innerHTML = rows.join('');
 }
 
-// Render die Gesamtplan-Box über der Anfragen-Tabelle
-function renderGlobalPlan(){
-  if(matchPlan == null) return '';
-  const p = matchPlan;
-  const totalDemanded = p.perRequest.reduce((s,r) => s + r.demanded, 0);
-  const totalAllocated = p.perRequest.reduce((s,r) => s + r.allocated, 0);
-  const fullyCovered = p.perRequest.filter(r => r.allocated >= r.demanded && r.demanded > 0).length;
-  const positionsCount = p.perRequest.filter(r => r.demanded > 0).length;
-  const cls = p.complete ? 'recommend' : 'recommend partial';
-  const icon = p.complete ? '🎯' : '⚠';
-  const title = p.complete ? 'Gesamtplan — alle Positionen gedeckt' : 'Gesamtplan — Teilabdeckung';
-  // Aufgelistete Bestand-Stücke nach Häufigkeit gruppieren (gleicher Bestand-Posten + gleiche Maße)
-  // Damit nicht z.B. 8 einzelne Zeilen für 8 Mal denselben Posten rauskommen.
-  const stockGroups = new Map();
-  p.allocations.forEach(a => {
-    const k = a.stockId + '|' + a.stockW + 'x' + a.stockH;
-    if(!stockGroups.has(k)) stockGroups.set(k, {alloc:a, count:0, totalDelivered:0, sumWaste:0});
-    const g = stockGroups.get(k);
-    g.count += 1;
-    g.totalDelivered += a.placements.length;
-    g.sumWaste += a.wastePct;
+// Gesamtplan-Zusammenfassung der getroffenen Auswahl
+function renderSummary(){
+  if(matchReqs.length === 0 || matchPicks.every(p => p == null)) return '';
+  const totalDemanded = matchReqs.reduce((s,r) => s + (Number(r.qty)||0), 0);
+  const totalCovered = matchPicks.reduce((s,p) => s + (p ? p.covered : 0), 0);
+  const fullyCovered = matchPicks.filter((p,i) => p && p.covered >= (Number(matchReqs[i].qty)||0) && (Number(matchReqs[i].qty)||0) > 0).length;
+  const positionsCount = matchReqs.filter(r => (Number(r.qty)||0) > 0).length;
+  const complete = totalCovered >= totalDemanded;
+  // Aggregiere Bestand-Verbrauch über alle Picks (gleiche Posten zusammenfassen)
+  const stockAgg = new Map();
+  let totalUsedArea = 0, totalSheetArea = 0;
+  matchPicks.forEach((pick, idx) => {
+    if(!pick) return;
+    const req = matchReqs[idx];
+    const rw = Number(req.w)||0, rh = Number(req.h)||0;
+    pick.posts.forEach(p => {
+      const k = p.stockId;
+      if(!stockAgg.has(k)) stockAgg.set(k, {first:p, sheetsCount:0, totalDelivered:0, sumWaste:0, reqIds:new Set()});
+      const g = stockAgg.get(k);
+      g.sheetsCount += p.sheetsTaken;
+      g.totalDelivered += p.delivered;
+      g.sumWaste += p.wastePct * p.sheetsTaken;
+      g.reqIds.add(req.reqId);
+      totalSheetArea += p.sheetsTaken * p.stockW * p.stockH;
+      if(rw>0 && rh>0) totalUsedArea += p.delivered * rw * rh;
+    });
   });
-  const stockList = Array.from(stockGroups.values()).map(g => {
-    const a = g.alloc;
-    const targetId = a.virtual ? a.parentId : a.stockId;
-    const avgWaste = (g.sumWaste / g.count * 100).toFixed(0);
-    // Welche Anfrage-Positionen werden aus diesem Bestand bedient?
-    const reqIdxSet = new Set();
-    a.placements.forEach(pl => reqIdxSet.add(pl.reqIdx));
-    p.allocations.filter(x => x.stockId === a.stockId).forEach(x => x.placements.forEach(pl => reqIdxSet.add(pl.reqIdx)));
-    const reqLabels = Array.from(reqIdxSet).map(i => escapeHtml(matchReqs[i].reqId)).join(', ');
+  const totalSheetsUsed = Array.from(stockAgg.values()).reduce((s,g) => s + g.sheetsCount, 0);
+  const totalWastePct = totalSheetArea > 0 ? Math.max(0, 1 - totalUsedArea/totalSheetArea) : 0;
+  const cls = complete ? 'recommend' : 'recommend partial';
+  const icon = complete ? '🎯' : '⚠';
+  const title = complete ? 'Auswahl — alle Positionen gedeckt' : 'Auswahl — Teilabdeckung';
+  const stockList = Array.from(stockAgg.values()).map(g => {
+    const p = g.first;
+    const targetId = p.virtual ? p.parentId : p.stockId;
+    const avgWaste = g.sheetsCount > 0 ? (g.sumWaste / g.sheetsCount * 100).toFixed(0) : '0';
+    const reqLabels = Array.from(g.reqIds).map(escapeHtml).join(', ');
     return `<li onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
-      <div><strong>${g.count}× </strong><span class="pick-id">${escapeHtml(a.stockId)}</span> (${a.stockW}×${a.stockH} mm) → ${g.totalDelivered} Scheiben</div>
-      <div class="pick-detail">${escapeHtml(a.type)} · bedient ${reqLabels} · ⌀ Verschnitt ${avgWaste}%</div>
+      <div><strong>${g.sheetsCount}× </strong><span class="pick-id">${escapeHtml(p.stockId)}</span> (${p.stockW}×${p.stockH} mm) → ${g.totalDelivered} Scheiben</div>
+      <div class="pick-detail">${escapeHtml(p.type)} · bedient ${reqLabels} · ⌀ Verschnitt ${avgWaste}%</div>
     </li>`;
   }).join('');
   return `<div class="${cls}" style="margin-top:14px">
     <div class="recommend-title">${icon} ${title}</div>
     <div class="recommend-summary">
-      Deckt <strong>${totalAllocated}/${totalDemanded}</strong> Anfrage-Scheiben aus <strong>${p.totalSheetsUsed}</strong> Bestand-Stücken
-      (${stockGroups.size} unterschiedliche Posten) · <strong>${fullyCovered}/${positionsCount}</strong> Positionen voll gedeckt · ⌀ Verschnitt <strong>${(p.totalWastePct*100).toFixed(0)}%</strong>
+      Deckt <strong>${totalCovered}/${totalDemanded}</strong> Anfrage-Scheiben aus <strong>${totalSheetsUsed}</strong> Bestand-Stücken
+      (${stockAgg.size} unterschiedliche Posten) · <strong>${fullyCovered}/${positionsCount}</strong> Positionen voll gedeckt · ⌀ Verschnitt <strong>${(totalWastePct*100).toFixed(0)}%</strong>
     </div>
-    ${stockList ? '<ul>'+stockList+'</ul>' : '<div style="color:var(--subtext);font-size:.85rem">Keine Allokationen — Anfragen passen nicht zum Bestand.</div>'}
+    ${stockList ? '<ul>'+stockList+'</ul>' : '<div style="color:var(--subtext);font-size:.85rem">Noch keine Auswahl getroffen.</div>'}
   </div>`;
 }
 
 function matchSingle(idx){
-  // Eine einzelne Anfrage anzugleichen heißt im globalen Modell: kompletter Re-Plan,
-  // da die Allokation einer Position die anderen beeinflusst.
-  matchPlan = globalAllocate(matchReqs);
-  matchResults[idx] = matchOne(matchReqs[idx]);
+  // Recompute der Vorauswahl ab dieser Position (Bestand ggf. wieder freigegeben + neu greedy)
+  recomputeFromIdx(idx);
+  if(matchResults[idx]==null) matchResults[idx] = matchOne(matchReqs[idx]);
   renderMatchTable();
 }
 
@@ -2337,8 +2332,8 @@ function matchToggle(idx){
   if(matchOpenIdx===idx){ matchOpenIdx=null; }
   else {
     matchOpenIdx = idx;
-    if(matchPlan==null) matchPlan = globalAllocate(matchReqs);
     if(matchResults[idx]==null) matchResults[idx] = matchOne(matchReqs[idx]);
+    if(matchOptions[idx]==null) autoPickFor(idx);
   }
   renderMatchTable();
 }
@@ -2346,42 +2341,39 @@ function matchToggle(idx){
 function renderMatchDetail(idx){
   const r = matchReqs[idx];
   const res = matchResults[idx];
-  const plan = matchPlan;
-  if(!res && !plan) return '<div style="padding:10px">Noch nicht abgeglichen.</div>';
+  const opts = matchOptions[idx];
+  const currentPick = matchPicks[idx];
+  if(!res && !opts) return '<div style="padding:10px">Noch nicht abgeglichen.</div>';
   let html = '';
-  // 1. Plan-Zuweisung dieser Position (was wurde aus welchen Bestand-Stücken zugeschnitten?)
-  if(plan){
-    const p = plan.perRequest[idx];
-    const cls = (p.allocated >= p.demanded && p.demanded>0) ? 'recommend' : (p.allocated > 0 ? 'recommend partial' : 'recommend partial');
-    const icon = (p.allocated >= p.demanded && p.demanded>0) ? '✓' : (p.allocated > 0 ? '⚠' : '✗');
-    const title = (p.allocated >= p.demanded && p.demanded>0)
-      ? 'Diese Position ist voll gedeckt'
-      : (p.allocated > 0 ? 'Teilabdeckung — Bestand reicht nicht für alles' : 'Keine Allokation — Anforderungen passen nicht zum Bestand');
-    const summary = `Globaler Plan weist <strong>${p.allocated}/${p.demanded}</strong> Anfrage-Scheiben aus <strong>${p.stocks.length}</strong> Bestand-Posten zu`;
-    // Stocks gruppieren (z.B. 3× FG-A statt 3 Einzelzeilen)
-    const stockAgg = new Map();
-    p.stocks.forEach(s => {
-      const k = s.stockId;
-      if(!stockAgg.has(k)) stockAgg.set(k, {first:s, sheetsCount:0, deliveredCount:0, sumWaste:0});
-      const g = stockAgg.get(k);
-      g.sheetsCount += 1;       // Anzahl angeschnittener Bestand-Stücke (je Eintrag = 1 Scheibe)
-      g.deliveredCount += s.count;
-      g.sumWaste += s.wastePct;
+  // 1. Vorschlags-Cards: bis zu 3 Optionen, die aktive ist hervorgehoben.
+  if(opts && opts.length > 0){
+    const targetQty = Number(r.qty)||0;
+    html += `<div style="margin-bottom:10px;font-size:.85rem;color:var(--subtext)">Vorschläge (sortiert nach geringstem Verschnitt). Klicke einen an — der Bestand wird für nachfolgende Positionen aktualisiert. <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="event.stopPropagation();resetPick(${idx})">↻ Auswahl zurücksetzen</button></div>`;
+    html += `<div class="option-list">`;
+    opts.forEach((opt, oi) => {
+      const isActive = currentPick && optionsAreEquivalent(currentPick, opt);
+      const tag = (oi === 0) ? 'Vorschlag 1 — geringster Verschnitt' : (oi === 1 ? 'Vorschlag 2' : 'Vorschlag 3');
+      const covCls = opt.complete ? 'ok' : (opt.covered > 0 ? 'partial' : 'zero');
+      const covTxt = opt.complete ? '✓ '+opt.covered+'/'+targetQty : opt.covered+'/'+targetQty;
+      const postsHtml = opt.posts.map(p => {
+        const pid = p.virtual ? p.parentId : p.stockId;
+        const cutInfo = p.cuts > 1 ? ` (je ${p.cuts} Scheiben/Stück)` : '';
+        const rotInfo = p.rotated ? ' · gedreht' : '';
+        const wasteInfo = ` · Verschnitt ${(p.wastePct*100).toFixed(0)}%`;
+        return `<div class="option-post"><strong>${p.sheetsTaken}× </strong>aus <span class="pick-id" onclick="event.stopPropagation();closeMatchAndOpen('${pid}')" style="cursor:pointer">${escapeHtml(p.stockId)}</span> (${p.stockW}×${p.stockH} mm) → <strong>${p.delivered}</strong> Scheibe${p.delivered===1?'':'n'}<span style="color:var(--subtext);font-size:.78rem">${cutInfo}${rotInfo}${wasteInfo}</span></div>`;
+      }).join('');
+      html += `<div class="option-card ${isActive?'active':''}" onclick="event.stopPropagation();selectOption(${idx},${oi})">
+        <div class="option-head">
+          <span class="option-tag">${isActive?'✓ ':''}${tag}</span>
+          <span class="hit-count ${covCls}" style="margin-left:8px">${covTxt}</span>
+          <span style="margin-left:auto;color:var(--subtext);font-size:.82rem">⌀ Verschnitt <strong>${(opt.comboWastePct*100).toFixed(0)}%</strong></span>
+        </div>
+        <div class="option-body">${postsHtml}</div>
+      </div>`;
     });
-    const stockListItems = Array.from(stockAgg.values()).map(g => {
-      const s = g.first;
-      const targetId = s.virtual ? s.parentId : s.stockId;
-      const avgWaste = (g.sumWaste / g.sheetsCount * 100).toFixed(0);
-      return `<li onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
-        <div><strong>${g.sheetsCount}× </strong>aus <span class="pick-id">${escapeHtml(s.stockId)}</span> (${s.stockW}×${s.stockH} mm) → <strong>${g.deliveredCount}</strong> Scheibe${g.deliveredCount===1?'':'n'}</div>
-        <div class="pick-detail">⌀ Verschnitt ${avgWaste}% (auf dieselbe Bestand-Scheibe können auch Stücke anderer Anfrage-Positionen kommen)</div>
-      </li>`;
-    }).join('');
-    html += `<div class="${cls}">
-      <div class="recommend-title">${icon} ${title}</div>
-      <div class="recommend-summary">${summary}</div>
-      ${stockListItems ? '<ul>'+stockListItems+'</ul>' : ''}
-    </div>`;
+    html += `</div>`;
+  } else if(opts && opts.length === 0){
+    html += `<div class="transparency zero"><strong>Keine passenden Bestand-Posten für diese Anfrage.</strong> Entweder reicht der verbleibende Bestand nicht oder die Kriterien sind zu eng (siehe unten).</div>`;
   }
   // 2. Transparenz-Anzeige bei wenig oder keinen passenden Posten
   if(res && res.matches.length < 3){
