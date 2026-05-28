@@ -475,6 +475,7 @@ let driveSaveTimer = null;
 let driveLastSync = null;
 let gapiReady = false;
 let gisReady = false;
+let silentAuthInProgress = false;
 
 // Called when Google API client lib finishes loading
 function gapiLoaded(){
@@ -486,6 +487,7 @@ function gapiLoaded(){
       });
       gapiReady = true;
       updateDriveStatus();
+      tryAutoReconnect();
     }catch(e){ console.error('gapi init failed',e); }
   });
 }
@@ -497,8 +499,11 @@ function gisLoaded(){
       client_id: OAUTH_CLIENT_ID,
       scope: DRIVE_SCOPE,
       callback: (resp)=>{
+        const wasSilent = silentAuthInProgress;
+        silentAuthInProgress = false;
         if(resp.error){
-          toast('Drive-Anmeldung fehlgeschlagen','err');
+          if(!wasSilent) toast('Drive-Anmeldung fehlgeschlagen','err');
+          else console.log('Stille Re-Auth nicht möglich — Klick auf Drive-Button nötig');
           updateDriveStatus();
           return;
         }
@@ -507,14 +512,30 @@ function gisLoaded(){
         updateDriveStatus();
         if(driveFileId){
           driveLoad();  // existing file → just load
-        } else {
+        } else if(!wasSilent) {
           showDriveSetup();  // first time → ask user
         }
       }
     });
     gisReady = true;
     updateDriveStatus();
+    tryAutoReconnect();
   }catch(e){ console.error('GIS init failed',e); }
+}
+
+// Silent re-auth on app load if we were connected before
+function tryAutoReconnect(){
+  if(!gisReady || !gapiReady) return;
+  if(driveAccessToken) return;
+  if(!driveFileId) return;
+  if(!driveTokenClient) return;
+  silentAuthInProgress = true;
+  try{
+    driveTokenClient.requestAccessToken({prompt: ''});
+  }catch(e){
+    silentAuthInProgress = false;
+    console.warn('Silent auth failed', e);
+  }
 }
 
 function driveAction(){
