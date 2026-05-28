@@ -1012,7 +1012,8 @@ function renderBuild(uid,type){
   if(type==='2-fach Isolierglas'||type==='3-fach Isolierglas'){
     const n=type[0]==='3'?3:2;
     for(let i=1;i<=n;i++){
-      h+=`<div class="layer"><div class="layer-hd">Lage ${i}</div>
+      const posA=2*i-1, posB=2*i;
+      h+=`<div class="layer"><div class="layer-hd">Position ${posA}/${posB}</div>
         <div class="fgrid">
           <div class="fg"><label>Glasart</label><select id="p_${uid}_l${i}_art"><option>Floatglas</option><option>ESG</option><option>VSG</option></select></div>
           <div class="fg"><label>Dicke (mm)</label><select id="p_${uid}_l${i}_d">${dopts(D_ISO)}</select></div>
@@ -1020,7 +1021,7 @@ function renderBuild(uid,type){
         </div>
         <div class="coat-fields" id="p_${uid}_l${i}_cf" style="display:none"><div class="fgrid">
           <div class="fg"><label>Beschichtungstyp</label><select id="p_${uid}_l${i}_ctype"><option>Wärmeschutz</option><option>Sonnenschutz</option></select></div>
-          <div class="fg"><label>Seite</label><select id="p_${uid}_l${i}_cside"><option>innen</option><option>außen</option></select></div>
+          <div class="fg"><label>Beschichtung auf Position</label><select id="p_${uid}_l${i}_cside"><option>${posA}</option><option>${posB}</option></select></div>
         </div></div></div>`;
     }
     h+=`<div class="fgrid"><div class="fg"><label>Breite Abstandshalter 1 (mm)</label><input type="number" id="p_${uid}_sp1" min="0" placeholder="16"></div>`;
@@ -1082,7 +1083,13 @@ function fillBuild(uid,build){
       set('l'+i+'_art',l.art); set('l'+i+'_d',l.d);
       const cb=gid(uid,'l'+i+'_coat');
       if(cb){ cb.checked=!!l.coat; g0('p_'+uid+'_l'+i+'_cf').style.display=l.coat?'block':'none'; }
-      if(l.coat){ set('l'+i+'_ctype',l.ctype); set('l'+i+'_cside',l.cside); }
+      if(l.coat){
+        set('l'+i+'_ctype',l.ctype);
+        let cs=l.cside;
+        if(cs==='außen') cs=String(2*i-1);
+        else if(cs==='innen') cs=String(2*i);
+        set('l'+i+'_cside',cs);
+      }
     });
     set('sp1',build.spacers[0]); if(build.spacers[1]!=null) set('sp2',build.spacers[1]);
   } else if(build.kind==='lam'){
@@ -1283,7 +1290,8 @@ function delEntry(id){
 function buildSummary(e){
   const b=e.build; if(!b) return '–';
   if(b.kind==='iso'){
-    const ls=b.lagen.map((l,i)=>`L${i+1}: ${l.art} ${l.d}mm${l.coat?` (${l.ctype}, ${l.cside})`:''}`).join(' · ');
+    const sideLabel=(l,i)=>{ const cs=String(l.cside||''); if(/^\d+$/.test(cs)) return 'Pos '+cs; if(cs==='außen') return 'Pos '+(2*(i+1)-1); if(cs==='innen') return 'Pos '+(2*(i+1)); return cs; };
+    const ls=b.lagen.map((l,i)=>`L${i+1}: ${l.art} ${l.d}mm${l.coat?` (${l.ctype}, ${sideLabel(l,i)})`:''}`).join(' · ');
     return `${ls} · Abstandshalter: ${b.spacers.map(s=>s+'mm').join(' / ')}`;
   }
   if(b.kind==='lam') return `${b.lc} Lagen — ${b.lagen.map((l,i)=>`L${i+1}: ${l.art} ${l.d}mm`).join(' · ')} · Zwischenlage: ${b.inter}`;
