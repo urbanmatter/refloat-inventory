@@ -694,6 +694,105 @@ window.addEventListener('DOMContentLoaded', ()=>{
   if(m) m.addEventListener('click', e=>{ if(e.target===m) closeDriveSetup(); });
 });
 
+// ════════════════════════ PHOTOS ON DRIVE ════════════════════════
+const photoCache = {};      // driveFileId -> dataURL
+const photoPending = {};    // driveFileId -> true while fetching
+let drivePhotoFolderId = null;
+// 1x1 transparent placeholder
+const PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150"><rect width="200" height="150" fill="%23F8F8FC"/><text x="50%" y="50%" text-anchor="middle" dy=".35em" font-size="42" fill="%23C7C7D9">⏳</text></svg>';
+
+function isBase64Photo(p){ return typeof p === 'string' && p.startsWith('data:'); }
+function isDrivePhotoRef(p){ return p && typeof p === 'object' && p.id; }
+
+async function ensurePhotoFolderId(){
+  if(drivePhotoFolderId) return drivePhotoFolderId;
+  if(!driveFileId) return null;
+  try{
+    const resp = await gapi.client.drive.files.get({fileId: driveFileId, fields: 'parents'});
+    drivePhotoFolderId = (resp.result.parents && resp.result.parents[0]) || null;
+    return drivePhotoFolderId;
+  }catch(e){ console.warn('Could not get photo folder',e); return null; }
+}
+
+async function uploadPhotoToDrive(dataUrl, filename){
+  if(!driveAccessToken) throw new Error('Drive nicht verbunden');
+  const parentId = await ensurePhotoFolderId();
+  const blob = await (await fetch(dataUrl)).blob();
+  const metadata = {name: filename || ('photo-'+Date.now()+'.jpg'), mimeType: 'image/jpeg'};
+  if(parentId) metadata.parents = [parentId];
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', blob);
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+    method: 'POST',
+    headers: {'Authorization': `Bearer ${driveAccessToken}`},
+    body: form
+  });
+  if(!r.ok) throw new Error('Upload HTTP '+r.status);
+  const data = await r.json();
+  photoCache[data.id] = dataUrl;  // already in memory, cache it
+  return {id: data.id, n: data.name};
+}
+
+async function fetchPhotoFromDrive(fileId){
+  if(photoCache[fileId]) return photoCache[fileId];
+  if(!driveAccessToken) throw new Error('Drive nicht verbunden');
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: {'Authorization': `Bearer ${driveAccessToken}`}
+  });
+  if(!r.ok) throw new Error('Fetch HTTP '+r.status);
+  const blob = await r.blob();
+  const url = await new Promise((resolve,reject)=>{
+    const fr = new FileReader();
+    fr.onloadend = ()=>resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+  photoCache[fileId] = url;
+  return url;
+}
+
+async function deletePhotoFromDrive(fileId){
+  if(!driveAccessToken || !fileId) return;
+  try{
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'DELETE',
+      headers: {'Authorization': `Bearer ${driveAccessToken}`}
+    });
+    delete photoCache[fileId];
+  }catch(e){ console.warn('Delete photo failed', e); }
+}
+
+function schedulePhotoFetch(id){
+  if(photoCache[id] || photoPending[id]) return;
+  photoPending[id] = true;
+  fetchPhotoFromDrive(id)
+    .then(url => {
+      delete photoPending[id];
+      document.querySelectorAll(`img[data-photo-id="${id}"]`).forEach(img => { img.src = url; });
+    })
+    .catch(e => {
+      delete photoPending[id];
+      console.warn('Photo fetch failed:', e);
+    });
+}
+
+// Returns the src URL for an <img> — Base64 directly, or placeholder + async fetch for Drive refs
+function photoSrc(p){
+  if(isBase64Photo(p)) return p;
+  if(isDrivePhotoRef(p)){
+    if(photoCache[p.id]) return photoCache[p.id];
+    schedulePhotoFetch(p.id);
+    return PHOTO_PLACEHOLDER;
+  }
+  return PHOTO_PLACEHOLDER;
+}
+
+// Returns ` data-photo-id="..."` attribute for tracking, or empty for Base64
+function photoAttr(p){
+  return isDrivePhotoRef(p) ? ` data-photo-id="${p.id}"` : '';
+}
+
 // ════════════════════════ CONFIG ════════════════════════
 const KEY='gdt_v1';
 const ABBR={'Floatglas':'FG','2-fach Isolierglas':'ISO2','3-fach Isolierglas':'ISO3','VSG':'VSG','ESG':'ESG','Verbundglas':'VG','Sonstiges':'SONST'};
@@ -1001,7 +1100,17 @@ function fillPosition(uid,e){
   s('tags',(e.tags||[]).join(', ')); s('notes',e.notes||'');
   g0('p_'+uid+'_rval').value=e.rStrat||'';
   renderRStrat(uid,e.rStrat||'');
-  photoStore[uid]=(e.photos||[]).map((d,i)=>({d,n:'Foto '+(i+1)}));
+  photoStore[uid]=(e.photos||[]).map((p,i)=>{
+    if(isBase64Photo(p)) return {d:p, n:'Foto '+(i+1)};
+    if(isDrivePhotoRef(p)){
+      const item={d: photoCache[p.id]||PHOTO_PLACEHOLDER, n: p.n||'Foto '+(i+1), id: p.id};
+      if(!photoCache[p.id]){
+        fetchPhotoFromDrive(p.id).then(url=>{ item.d=url; if(positions.includes(uid)) drawPhotos(uid); }).catch(()=>{});
+      }
+      return item;
+    }
+    return {d: PHOTO_PLACEHOLDER, n: 'Foto '+(i+1)};
+  });
   drawPhotos(uid);
   recalcWeight(uid);
 }
@@ -1023,31 +1132,70 @@ function collectPosition(uid,base){
   });
 }
 
-function save(){
+// Returns photos array ready for storage. Uploads new items to Drive if connected.
+async function processPhotosForSave(uid){
+  const items=photoStore[uid]||[];
+  const out=[];
+  for(const p of items){
+    if(p.id){ out.push({id:p.id, n:p.n}); continue; }
+    if(driveAccessToken && driveFileId){
+      try{
+        const up=await uploadPhotoToDrive(p.d, p.n);
+        out.push(up);
+      }catch(e){
+        console.warn('Photo upload failed, falling back to Base64',e);
+        toast('Foto-Upload fehlgeschlagen — lokal gespeichert','err');
+        out.push(p.d);
+      }
+    } else {
+      out.push(p.d);  // no Drive — store as Base64 (legacy fallback)
+    }
+  }
+  return out;
+}
+
+let saving=false;
+async function save(){
+  if(saving) return;
   const building=v0('hBuilding');
   if(!building){ toast('Bitte Herkunftsgebäude angeben.','err'); return; }
   for(const uid of positions){ if(!gid(uid,'type').value){ toast('Bitte Glastyp für jede Position wählen.','err'); return; } }
   const year=g0('hYear').value, address=v0('hAddress');
 
-  if(editingId){
-    const e=db.find(x=>x.id===editingId); const uid=positions[0];
-    Object.assign(e, collectPosition(uid,{id:editingId,projId:e.projId,projLabel:building,pos:e.pos,building,address,year}));
-    e.upd=now(); persist(); toast('Position aktualisiert.','ok'); resetForm(); nav('list'); return;
-  }
+  saving=true;
+  const totalPhotos=positions.reduce((n,uid)=>n+(photoStore[uid]||[]).filter(p=>!p.id).length,0);
+  if(totalPhotos>0 && driveAccessToken && driveFileId) toast(`Lade ${totalPhotos} Foto(s) hoch…`,'ok');
 
-  const projId='PRJ-'+year+'-'+pad4(nextProj(year));
-  const typeBase={};
-  positions.forEach(uid=>{ const t=gid(uid,'type').value; if(!(t in typeBase)) typeBase[t]=nextNum(t,year); });
-  positions.forEach((uid,i)=>{
-    const t=gid(uid,'type').value, order=i+1;
-    const id=`${ABBR[t]}-${year}-${pad3(typeBase[t])}-P${order}`;
-    const entry=collectPosition(uid,{id,projId,projLabel:building,pos:order,building,address,year});
-    entry.at=now(); entry.upd=now();
-    db.push(entry);
-  });
-  persist();
-  toast(positions.length+' Position(en) gespeichert.','ok');
-  resetForm(); nav('list');
+  try{
+    if(editingId){
+      const e=db.find(x=>x.id===editingId); const uid=positions[0];
+      const oldPhotos=e.photos||[];
+      const newPhotos=await processPhotosForSave(uid);
+      Object.assign(e, collectPosition(uid,{id:editingId,projId:e.projId,projLabel:building,pos:e.pos,building,address,year}));
+      e.photos=newPhotos;
+      // Delete photos that were removed in the edit
+      const keepIds=new Set(newPhotos.filter(isDrivePhotoRef).map(p=>p.id));
+      oldPhotos.forEach(p=>{ if(isDrivePhotoRef(p) && !keepIds.has(p.id)) deletePhotoFromDrive(p.id); });
+      e.upd=now(); persist(); toast('Position aktualisiert.','ok'); resetForm(); nav('list'); return;
+    }
+
+    const projId='PRJ-'+year+'-'+pad4(nextProj(year));
+    const typeBase={};
+    positions.forEach(uid=>{ const t=gid(uid,'type').value; if(!(t in typeBase)) typeBase[t]=nextNum(t,year); });
+    for(let i=0;i<positions.length;i++){
+      const uid=positions[i], t=gid(uid,'type').value, order=i+1;
+      const id=`${ABBR[t]}-${year}-${pad3(typeBase[t])}-P${order}`;
+      const entry=collectPosition(uid,{id,projId,projLabel:building,pos:order,building,address,year});
+      entry.photos=await processPhotosForSave(uid);
+      entry.at=now(); entry.upd=now();
+      db.push(entry);
+    }
+    persist();
+    toast(positions.length+' Position(en) gespeichert.','ok');
+    resetForm(); nav('list');
+  } finally {
+    saving=false;
+  }
 }
 
 function resetForm(skip){
@@ -1077,6 +1225,8 @@ function editEntry(id){
 function delEntry(id){
   const e=db.find(x=>x.id===id); if(!e) return;
   if(!confirm('Eintrag "'+e.id+'" wirklich löschen?')) return;
+  // Fire-and-forget: delete any associated Drive photo files
+  (e.photos||[]).forEach(p=>{ if(isDrivePhotoRef(p)) deletePhotoFromDrive(p.id); });
   db=db.filter(x=>x.id!==id); persist(); filter(); toast(id+' gelöscht.','ok');
 }
 
@@ -1169,7 +1319,7 @@ function renderTable(){
 }
 function renderCards(){
   g0('v-cards').innerHTML=fd.map(e=>{
-    const thumb=e.photos&&e.photos[0]?`<div class="gc-img"><img src="${e.photos[0]}"></div>`:`<div class="gc-img">🪟</div>`;
+    const thumb=e.photos&&e.photos[0]?`<div class="gc-img"><img src="${photoSrc(e.photos[0])}"${photoAttr(e.photos[0])}></div>`:`<div class="gc-img">🪟</div>`;
     const tagHtml=e.tags&&e.tags.length?`<div class="tags">${e.tags.slice(0,3).map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:'';
     return `<div class="gc" onclick="openDetail('${e.id}')">${thumb}<div class="gc-body">
       <div class="gc-id">${e.id}</div>
@@ -1192,7 +1342,7 @@ function openDetail(id){
   g0('mtitle').textContent=`${e.type} – ${e.color||''}`;
   g0('msub').textContent=e.id;
   const r=rGet(e.rStrat);
-  const gal=detailPhotos.length?`<div class="detail-gallery">${detailPhotos.map((p,i)=>`<img src="${p}" onclick="openLB(${i});event.stopPropagation()">`).join('')}</div>`:'';
+  const gal=detailPhotos.length?`<div class="detail-gallery">${detailPhotos.map((p,i)=>`<img src="${photoSrc(p)}"${photoAttr(p)} onclick="openLB(${i});event.stopPropagation()">`).join('')}</div>`:'';
   const tags=e.tags&&e.tags.length?`<div class="tags">${e.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:'–';
   g0('mbody').innerHTML=`
     <div class="proj-banner">📁 Projekt: <strong>${e.projLabel||e.building||'–'}</strong>${e.projId?` · ${e.projId}`:''}${e.pos?` · Position P${e.pos}`:''}</div>
@@ -1237,10 +1387,19 @@ function exportCSV(){
 }
 
 // ════════════════════════ PDF ════════════════════════
-function pdfEntry(){
+async function pdfEntry(){
   const e=db.find(x=>x.id===detailId); if(!e) return;
+  // Pre-fetch any Drive-stored photos so the print includes them
+  if(e.photos && e.photos.length){
+    const needed = e.photos.filter(isDrivePhotoRef).map(p=>p.id).filter(id=>!photoCache[id]);
+    if(needed.length){
+      toast('Fotos werden geladen…','ok');
+      try{ await Promise.all(needed.map(fetchPhotoFromDrive)); }
+      catch(err){ console.warn('Photo pre-fetch failed',err); }
+    }
+  }
   const r=rGet(e.rStrat);
-  const photoHtml=e.photos&&e.photos.length?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">${e.photos.map(p=>`<img src="${p}" style="width:160px;height:115px;object-fit:cover;border-radius:6px;border:1px solid #ddd">`).join('')}</div>`:'';
+  const photoHtml=e.photos&&e.photos.length?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">${e.photos.map(p=>`<img src="${photoSrc(p)}" style="width:160px;height:115px;object-fit:cover;border-radius:6px;border:1px solid #ddd">`).join('')}</div>`:'';
   const tagsHtml=e.tags&&e.tags.length?e.tags.map(t=>`<span style="background:#eee7ff;color:#5B4BE1;padding:2px 9px;border-radius:10px;font-size:11px;margin:2px">${t}</span>`).join(''):'–';
   const rows=[['Herkunftsgebäude',e.building||e.projLabel||'–'],['Adresse',e.address||'–'],['Projekt-ID',e.projId||'–'],['Rückbaujahr',e.year||'–'],['Glasaufbau',buildSummary(e)],['Abmessungen (B×H)',`${e.w||'–'} × ${e.h||'–'} mm`],['Glasdicke gesamt',(e.d||0)+' mm'],['Gewicht (berechnet)',e.wt>0?e.wt+' kg':'–'],['Farbe / Tönung',e.color||'–'],['Beschichtung',e.coating||'–'],['Stückzahl',e.qty||1],['Lagerort',e.loc||'–']];
   g0('parea').innerHTML=`
@@ -1272,7 +1431,7 @@ function pdfEntry(){
 }
 
 // ════════════════════════ LIGHTBOX / TOAST ════════════════════════
-function openLB(i){ g0('lbimg').src=detailPhotos[i]; g0('lb').classList.add('open'); }
+function openLB(i){ const p=detailPhotos[i]; g0('lbimg').src=photoSrc(p); if(isDrivePhotoRef(p)) g0('lbimg').setAttribute('data-photo-id',p.id); else g0('lbimg').removeAttribute('data-photo-id'); g0('lb').classList.add('open'); }
 function closeLB(){ g0('lb').classList.remove('open'); }
 function toast(msg,type){ const c=g0('toasts'),t=document.createElement('div'); t.className='toast'+(type?' '+type:''); t.textContent=msg; c.append(t); setTimeout(()=>t.remove(),3200); }
 
