@@ -446,7 +446,6 @@ tr:last-child td{border-bottom:none}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
       <button class="btn btn-soft btn-sm" onclick="downloadMatchTemplate()">📥 Excel-Vorlage herunterladen</button>
-      <button class="btn btn-soft btn-sm" onclick="loadDemoData()">🧪 20 Beispiel-Glasposten in den Bestand laden</button>
     </div>
     <details style="margin-top:14px">
       <summary style="cursor:pointer;color:var(--subtext);font-size:.9rem">Erkannte Spaltennamen anzeigen</summary>
@@ -745,6 +744,7 @@ async function driveLoad(){
     if(Array.isArray(data)){
       db = data;
       localStorage.setItem(KEY, JSON.stringify(db));
+      if(typeof seedDemoIfNeeded === 'function') seedDemoIfNeeded();
       if(typeof filter === 'function') filter();
       driveLastSync = new Date();
       toast(`Aus Drive geladen: ${db.length} Einträge`,'ok');
@@ -2007,58 +2007,58 @@ function _mkEntry(o){
 
 const DEMO_DATA_FACTORY = ()=>([
   // ─── Floatglas (8) ───
-  _mkEntry({id:'FG-2018-001-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'Floatglas', w:800, h:1200, d:4, color:'Klar', coating:'Keine', qty:25, loc:'Halle A, Regal 3', price:35, at:'2024-01-15T10:00:00Z'}),
-  _mkEntry({id:'FG-2018-002-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'Floatglas', w:1000, h:1400, d:6, color:'Klar', coating:'Keine', qty:18, loc:'Halle A, Regal 3', price:55, at:'2024-01-15T10:05:00Z'}),
-  _mkEntry({id:'FG-2019-001-P1', projId:'PRJ-2019-0002', building:'Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'Floatglas', w:900, h:1300, d:5, color:'Klar', coating:'Keine', qty:32, loc:'Halle B, Regal 1', price:45, at:'2024-02-03T09:00:00Z'}),
-  _mkEntry({id:'FG-2020-001-P1', projId:'PRJ-2020-0003', building:'Lagerhalle Nord', address:'Industriestr. 8, Bremen', year:2020, type:'Floatglas', w:1500, h:2200, d:8, color:'Klar', coating:'Keine', qty:8, loc:'Halle C, Regal 2', price:95, at:'2024-02-20T14:00:00Z'}),
-  _mkEntry({id:'FG-2021-001-P1', projId:'PRJ-2021-0004', building:'Bauhof Stadtwerke', address:'Werkstr. 30, Dresden', year:2021, type:'Floatglas', w:1200, h:1800, d:10, color:'Klar', coating:'Keine', qty:12, loc:'Halle C, Regal 4', price:130, at:'2024-03-12T11:00:00Z'}),
-  _mkEntry({id:'FG-2022-001-P1', projId:'PRJ-2022-0005', building:'Gewächshaus Botanik', address:'Parkweg 2, Köln', year:2022, type:'Floatglas', w:700, h:900, d:6, color:'Grün', coating:'Keine', qty:40, loc:'Halle A, Regal 5', price:38, at:'2024-04-01T08:30:00Z'}),
-  _mkEntry({id:'FG-2022-002-P1', projId:'PRJ-2022-0006', building:'Pavillon Stadtpark', address:'Grünanlage 1, Leipzig', year:2022, type:'Floatglas', w:1100, h:1600, d:6, color:'Bronze', coating:'Keine', qty:14, loc:'Halle B, Regal 3', price:62, at:'2024-04-15T10:00:00Z'}),
-  _mkEntry({id:'FG-2023-001-P1', projId:'PRJ-2023-0007', building:'Werkstattgebäude Süd', address:'Handwerkerstr. 22, Stuttgart', year:2023, type:'Floatglas', w:1400, h:2000, d:8, color:'Klar', coating:'Keine', qty:6, loc:'Halle C, Regal 1', price:110, at:'2024-05-02T09:00:00Z'}),
+  _mkEntry({id:'FG-2018-001-P1', projId:'PRJ-2018-0001', building:'DEMO – Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'Floatglas', w:800, h:1200, d:4, color:'Klar', coating:'Keine', qty:25, loc:'Halle A, Regal 3', price:35, at:'2024-01-15T10:00:00Z'}),
+  _mkEntry({id:'FG-2018-002-P1', projId:'PRJ-2018-0001', building:'DEMO – Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'Floatglas', w:1000, h:1400, d:6, color:'Klar', coating:'Keine', qty:18, loc:'Halle A, Regal 3', price:55, at:'2024-01-15T10:05:00Z'}),
+  _mkEntry({id:'FG-2019-001-P1', projId:'PRJ-2019-0002', building:'DEMO – Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'Floatglas', w:900, h:1300, d:5, color:'Klar', coating:'Keine', qty:32, loc:'Halle B, Regal 1', price:45, at:'2024-02-03T09:00:00Z'}),
+  _mkEntry({id:'FG-2020-001-P1', projId:'PRJ-2020-0003', building:'DEMO – Lagerhalle Nord', address:'Industriestr. 8, Bremen', year:2020, type:'Floatglas', w:1500, h:2200, d:8, color:'Klar', coating:'Keine', qty:8, loc:'Halle C, Regal 2', price:95, at:'2024-02-20T14:00:00Z'}),
+  _mkEntry({id:'FG-2021-001-P1', projId:'PRJ-2021-0004', building:'DEMO – Bauhof Stadtwerke', address:'Werkstr. 30, Dresden', year:2021, type:'Floatglas', w:1200, h:1800, d:10, color:'Klar', coating:'Keine', qty:12, loc:'Halle C, Regal 4', price:130, at:'2024-03-12T11:00:00Z'}),
+  _mkEntry({id:'FG-2022-001-P1', projId:'PRJ-2022-0005', building:'DEMO – Gewächshaus Botanik', address:'Parkweg 2, Köln', year:2022, type:'Floatglas', w:700, h:900, d:6, color:'Grün', coating:'Keine', qty:40, loc:'Halle A, Regal 5', price:38, at:'2024-04-01T08:30:00Z'}),
+  _mkEntry({id:'FG-2022-002-P1', projId:'PRJ-2022-0006', building:'DEMO – Pavillon Stadtpark', address:'Grünanlage 1, Leipzig', year:2022, type:'Floatglas', w:1100, h:1600, d:6, color:'Bronze', coating:'Keine', qty:14, loc:'Halle B, Regal 3', price:62, at:'2024-04-15T10:00:00Z'}),
+  _mkEntry({id:'FG-2023-001-P1', projId:'PRJ-2023-0007', building:'DEMO – Werkstattgebäude Süd', address:'Handwerkerstr. 22, Stuttgart', year:2023, type:'Floatglas', w:1400, h:2000, d:8, color:'Klar', coating:'Keine', qty:6, loc:'Halle C, Regal 1', price:110, at:'2024-05-02T09:00:00Z'}),
 
   // ─── 2-fach Isolierglas (8) ───
-  _mkEntry({id:'ISO2-2018-001-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'2-fach Isolierglas', w:1200, h:1500, color:'Klar', coating:'Wärmeschutz', qty:20, loc:'Halle A, Regal 6', price:140,
+  _mkEntry({id:'ISO2-2018-001-P1', projId:'PRJ-2018-0001', building:'DEMO – Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'2-fach Isolierglas', w:1200, h:1500, color:'Klar', coating:'Wärmeschutz', qty:20, loc:'Halle A, Regal 6', price:140,
     build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-01-15T10:10:00Z'}),
-  _mkEntry({id:'ISO2-2018-002-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'2-fach Isolierglas', w:1000, h:1300, color:'Klar', coating:'Wärmeschutz', qty:18, loc:'Halle A, Regal 6', price:120,
+  _mkEntry({id:'ISO2-2018-002-P1', projId:'PRJ-2018-0001', building:'DEMO – Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'2-fach Isolierglas', w:1000, h:1300, color:'Klar', coating:'Wärmeschutz', qty:18, loc:'Halle A, Regal 6', price:120,
     build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-01-15T10:15:00Z'}),
-  _mkEntry({id:'ISO2-2019-001-P1', projId:'PRJ-2019-0002', building:'Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'2-fach Isolierglas', w:800, h:1400, color:'Klar', coating:'Wärmeschutz', qty:35, loc:'Halle B, Regal 4', price:115,
+  _mkEntry({id:'ISO2-2019-001-P1', projId:'PRJ-2019-0002', building:'DEMO – Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'2-fach Isolierglas', w:800, h:1400, color:'Klar', coating:'Wärmeschutz', qty:35, loc:'Halle B, Regal 4', price:115,
     build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-02-03T09:10:00Z'}),
-  _mkEntry({id:'ISO2-2019-002-P1', projId:'PRJ-2019-0002', building:'Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'2-fach Isolierglas', w:1500, h:2000, color:'Klar', coating:'Wärmeschutz', qty:12, loc:'Halle B, Regal 4', price:185,
+  _mkEntry({id:'ISO2-2019-002-P1', projId:'PRJ-2019-0002', building:'DEMO – Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'2-fach Isolierglas', w:1500, h:2000, color:'Klar', coating:'Wärmeschutz', qty:12, loc:'Halle B, Regal 4', price:185,
     build: _isoBuild(2, [_isoLayer(6,2), _isoLayer(6)], [20]), at:'2024-02-03T09:20:00Z'}),
-  _mkEntry({id:'ISO2-2020-001-P1', projId:'PRJ-2020-0008', building:'Stadtbibliothek', address:'Lesegasse 4, München', year:2020, type:'2-fach Isolierglas', w:1100, h:1800, color:'Klar', coating:'Sonnenschutz', qty:16, loc:'Halle B, Regal 5', price:175,
+  _mkEntry({id:'ISO2-2020-001-P1', projId:'PRJ-2020-0008', building:'DEMO – Stadtbibliothek', address:'Lesegasse 4, München', year:2020, type:'2-fach Isolierglas', w:1100, h:1800, color:'Klar', coating:'Sonnenschutz', qty:16, loc:'Halle B, Regal 5', price:175,
     build: _isoBuild(2, [_isoLayerSun(6,2), _isoLayer(4)], [16]), at:'2024-03-05T10:00:00Z'}),
-  _mkEntry({id:'ISO2-2020-002-P1', projId:'PRJ-2020-0008', building:'Stadtbibliothek', address:'Lesegasse 4, München', year:2020, type:'2-fach Isolierglas', w:900, h:1500, color:'Bronze', coating:'Sonnenschutz', qty:22, loc:'Halle B, Regal 5', price:160,
+  _mkEntry({id:'ISO2-2020-002-P1', projId:'PRJ-2020-0008', building:'DEMO – Stadtbibliothek', address:'Lesegasse 4, München', year:2020, type:'2-fach Isolierglas', w:900, h:1500, color:'Bronze', coating:'Sonnenschutz', qty:22, loc:'Halle B, Regal 5', price:160,
     build: _isoBuild(2, [_isoLayerSun(6,2), _isoLayer(4)], [16]), at:'2024-03-05T10:10:00Z'}),
-  _mkEntry({id:'ISO2-2021-001-P1', projId:'PRJ-2021-0009', building:'Hotel am See', address:'Seestr. 17, Konstanz', year:2021, type:'2-fach Isolierglas', w:800, h:1200, color:'Klar', coating:'Wärmeschutz', qty:28, loc:'Halle A, Regal 7', price:135,
+  _mkEntry({id:'ISO2-2021-001-P1', projId:'PRJ-2021-0009', building:'DEMO – Hotel am See', address:'Seestr. 17, Konstanz', year:2021, type:'2-fach Isolierglas', w:800, h:1200, color:'Klar', coating:'Wärmeschutz', qty:28, loc:'Halle A, Regal 7', price:135,
     build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), status:'Reserviert', at:'2024-04-08T11:00:00Z'}),
-  _mkEntry({id:'ISO2-2022-001-P1', projId:'PRJ-2022-0010', building:'Wohnhaus Eichenweg', address:'Eichenweg 9, Hannover', year:2022, type:'2-fach Isolierglas', w:600, h:900, color:'Klar', coating:'Wärmeschutz', qty:50, loc:'Halle A, Regal 8', price:95,
+  _mkEntry({id:'ISO2-2022-001-P1', projId:'PRJ-2022-0010', building:'DEMO – Wohnhaus Eichenweg', address:'Eichenweg 9, Hannover', year:2022, type:'2-fach Isolierglas', w:600, h:900, color:'Klar', coating:'Wärmeschutz', qty:50, loc:'Halle A, Regal 8', price:95,
     build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-05-12T09:00:00Z'}),
 
   // ─── 3-fach Isolierglas (4) ───
-  _mkEntry({id:'ISO3-2019-001-P1', projId:'PRJ-2019-0011', building:'Verwaltung Rathaus', address:'Marktplatz 1, Freiburg', year:2019, type:'3-fach Isolierglas', w:1200, h:1600, color:'Klar', coating:'Wärmeschutz', qty:18, loc:'Halle C, Regal 5', price:220,
+  _mkEntry({id:'ISO3-2019-001-P1', projId:'PRJ-2019-0011', building:'DEMO – Verwaltung Rathaus', address:'Marktplatz 1, Freiburg', year:2019, type:'3-fach Isolierglas', w:1200, h:1600, color:'Klar', coating:'Wärmeschutz', qty:18, loc:'Halle C, Regal 5', price:220,
     build: _isoBuild(3, [_isoLayer(4,2), _isoLayer(4), _isoLayer(4,5)], [12,12]), at:'2024-02-15T10:00:00Z'}),
-  _mkEntry({id:'ISO3-2020-001-P1', projId:'PRJ-2020-0012', building:'Klinikum Süd', address:'Krankenhausweg 3, Nürnberg', year:2020, type:'3-fach Isolierglas', w:1000, h:2000, color:'Klar', coating:'Wärmeschutz', qty:24, loc:'Halle C, Regal 6', price:245,
+  _mkEntry({id:'ISO3-2020-001-P1', projId:'PRJ-2020-0012', building:'DEMO – Klinikum Süd', address:'Krankenhausweg 3, Nürnberg', year:2020, type:'3-fach Isolierglas', w:1000, h:2000, color:'Klar', coating:'Wärmeschutz', qty:24, loc:'Halle C, Regal 6', price:245,
     build: _isoBuild(3, [_isoLayer(4,2), _isoLayer(4), _isoLayer(4,5)], [12,12]), at:'2024-03-20T09:00:00Z'}),
-  _mkEntry({id:'ISO3-2022-001-P1', projId:'PRJ-2022-0013', building:'Schulzentrum Ost', address:'Bildungsweg 6, Essen', year:2022, type:'3-fach Isolierglas', w:1100, h:1700, color:'Klar', coating:'Sonnenschutz', qty:14, loc:'Halle C, Regal 7', price:265,
+  _mkEntry({id:'ISO3-2022-001-P1', projId:'PRJ-2022-0013', building:'DEMO – Schulzentrum Ost', address:'Bildungsweg 6, Essen', year:2022, type:'3-fach Isolierglas', w:1100, h:1700, color:'Klar', coating:'Sonnenschutz', qty:14, loc:'Halle C, Regal 7', price:265,
     build: _isoBuild(3, [_isoLayerSun(4,2), _isoLayer(4), _isoLayer(4,5)], [12,12]), at:'2024-05-25T11:00:00Z'}),
-  _mkEntry({id:'ISO3-2023-001-P1', projId:'PRJ-2023-0014', building:'Forschungszentrum Tech', address:'Innovationsweg 11, Karlsruhe', year:2023, type:'3-fach Isolierglas', w:1300, h:1900, color:'Grau', coating:'Wärmeschutz', qty:8, loc:'Halle C, Regal 8', price:295,
+  _mkEntry({id:'ISO3-2023-001-P1', projId:'PRJ-2023-0014', building:'DEMO – Forschungszentrum Tech', address:'Innovationsweg 11, Karlsruhe', year:2023, type:'3-fach Isolierglas', w:1300, h:1900, color:'Grau', coating:'Wärmeschutz', qty:8, loc:'Halle C, Regal 8', price:295,
     build: _isoBuild(3, [_isoLayer(6,2), _isoLayer(4), _isoLayer(4,5)], [16,16]), at:'2024-06-02T10:00:00Z'})
 ]);
 
-function loadDemoData(){
+const DEMO_SEED_FLAG = 'refloat_demo_seeded_v1';
+
+// Beim ersten Start einmalig 20 DEMO-Posten in den Bestand legen.
+// Wird durch persist() automatisch auch nach Drive synchronisiert (falls verbunden).
+// Flag in localStorage verhindert, dass die Posten nach dem Löschen wiederkommen.
+function seedDemoIfNeeded(){
+  if(localStorage.getItem(DEMO_SEED_FLAG)==='true') return;
   const data = DEMO_DATA_FACTORY();
-  if(db.length>0){
-    if(!confirm(`Dein Bestand enthält bereits ${db.length} Posten. ${data.length} Beispielposten zusätzlich hinzufügen?`)) return;
-  } else {
-    if(!confirm(`${data.length} Beispielposten zum Bestand hinzufügen? Bei aktivem Drive-Sync werden sie auch dort gespeichert.`)) return;
-  }
-  // ID-Kollisionen vermeiden
   const existing = new Set(db.map(e=>e.id));
   const fresh = data.filter(e=>!existing.has(e.id));
-  if(fresh.length===0){ toast('Alle Beispiel-IDs sind bereits im Bestand','err'); return; }
+  if(fresh.length===0){ localStorage.setItem(DEMO_SEED_FLAG,'true'); return; }
   db.push(...fresh);
+  localStorage.setItem(DEMO_SEED_FLAG,'true');
   persist(); filter();
-  toast(`${fresh.length} Beispielposten hinzugefügt`, 'ok');
 }
 
 // Drag & Drop
@@ -2087,7 +2087,7 @@ g0('hYear').addEventListener('change',renumber);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeModal(); closeLB(); } });
 
 // ════════════════════════ INIT ════════════════════════
-load(); initYears(); initFilters(); filter(); resetForm(); matchInitDnD();
+load(); seedDemoIfNeeded(); initYears(); initFilters(); filter(); resetForm(); matchInitDnD();
 </script>
 </body>
 </html>
