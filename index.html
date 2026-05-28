@@ -118,15 +118,20 @@ input.ro,input[readonly]{background:var(--bg);color:var(--subtext);cursor:not-al
 .recommend li{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.85rem}
 .recommend li .pick-id{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;color:var(--secondary)}
 .recommend li .pick-detail{color:var(--subtext);font-size:.78rem;margin-top:2px}
-.option-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
-.option-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:.15s}
+.option-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px;align-items:stretch}
+.option-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:.15s;display:flex;flex-direction:column}
 .option-card:hover{border-color:var(--accent)}
 .option-card.active{border-color:var(--primary);background:#F4F2FF;box-shadow:0 0 0 1px var(--primary)}
-.option-head{display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:600;margin-bottom:6px}
-.option-tag{color:var(--primary)}
-.option-body{display:flex;flex-direction:column;gap:4px;font-size:.85rem}
-.option-post{padding:4px 0}
+.option-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-size:.85rem;font-weight:600;margin-bottom:8px}
+.option-tag{color:var(--primary);flex:1;min-width:0}
+.option-waste{color:var(--subtext);font-size:.8rem;font-weight:500;width:100%;margin-top:2px}
+.option-body{display:flex;flex-direction:column;gap:4px;font-size:.83rem;flex:1}
+.option-post{padding:3px 0;line-height:1.45}
 .option-post .pick-id{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;color:var(--secondary)}
+/* Anfragen-Detail-Zeile dauerhaft sichtbar */
+.req-row{cursor:default}
+.req-row td{border-bottom:none}
+.req-detail-inner{padding:8px 4px 18px}
 .rotated-badge{display:inline-block;background:#7C6EF0;color:#fff;font-size:.7rem;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
 .virtual-badge{display:inline-block;background:#1E3A5F;color:#fff;font-size:.7rem;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
 .req-meta{color:var(--subtext);font-size:.85rem;display:flex;flex-wrap:wrap;gap:14px;margin-top:4px}
@@ -2120,7 +2125,7 @@ function resetPick(idx){
 
 // ─── State + UI ───
 let matchReqs = [];      // Array von normalisierten Anfragen
-let matchOpenIdx = null; // welche Zeile aufgeklappt ist
+let matchOpenIdx = null; // (deprecated, dauerhaft sichtbar — wird nicht mehr genutzt)
 let matchResults = [];   // Cache der matchOne-Ergebnisse (für Transparenz-Anzeige)
 let matchOptions = [];   // Pro Position: Array der berechneten Vorschläge (1-3)
 let matchPicks   = [];   // Pro Position: gewählter Vorschlag (oder null)
@@ -2236,7 +2241,6 @@ function renderMatchTable(){
   const planBox = g0('m-plan');
   if(planBox) planBox.innerHTML = renderSummary();
   const rows = matchReqs.map((r,idx)=>{
-    const isOpen = matchOpenIdx===idx;
     const pick = matchPicks[idx];
     const demanded = Number(r.qty)||0;
     let statusCell;
@@ -2253,7 +2257,8 @@ function renderMatchTable(){
       const txt = full ? '✓ '+covered+'/'+demanded : covered+'/'+demanded;
       statusCell = `<span class="hit-count ${cls}">${txt}</span>`;
     }
-    const tr = `<tr class="req-row ${isOpen?'open':''}" onclick="matchToggle(${idx})">
+    // Anfragen-Zeile + Detail-Block immer sichtbar
+    const tr = `<tr class="req-row">
       <td><strong>${escapeHtml(r.reqId)}</strong></td>
       <td>${escapeHtml(r.type||'–')}</td>
       <td>${r.d!=null?r.d+' mm':'–'}</td>
@@ -2263,7 +2268,7 @@ function renderMatchTable(){
       <td>${escapeHtml(r.color||'–')}</td>
       <td>${statusCell}</td>
     </tr>`;
-    const detail = isOpen ? `<tr class="req-detail"><td colspan="8"><div class="req-detail-inner">${renderMatchDetail(idx)}</div></td></tr>` : '';
+    const detail = `<tr class="req-detail"><td colspan="8"><div class="req-detail-inner">${renderMatchDetail(idx)}</div></td></tr>`;
     return tr + detail;
   });
   g0('m-tbody').innerHTML = rows.join('');
@@ -2328,15 +2333,7 @@ function matchSingle(idx){
   renderMatchTable();
 }
 
-function matchToggle(idx){
-  if(matchOpenIdx===idx){ matchOpenIdx=null; }
-  else {
-    matchOpenIdx = idx;
-    if(matchResults[idx]==null) matchResults[idx] = matchOne(matchReqs[idx]);
-    if(matchOptions[idx]==null) autoPickFor(idx);
-  }
-  renderMatchTable();
-}
+// matchToggle wird nicht mehr aufgerufen — Optionen sind dauerhaft sichtbar.
 
 function renderMatchDetail(idx){
   const r = matchReqs[idx];
@@ -2359,15 +2356,14 @@ function renderMatchDetail(idx){
         const pid = p.virtual ? p.parentId : p.stockId;
         const cutInfo = p.cuts > 1 ? ` (je ${p.cuts} Scheiben/Stück)` : '';
         const rotInfo = p.rotated ? ' · gedreht' : '';
-        const wasteInfo = ` · Verschnitt ${(p.wastePct*100).toFixed(0)}%`;
-        return `<div class="option-post"><strong>${p.sheetsTaken}× </strong>aus <span class="pick-id" onclick="event.stopPropagation();closeMatchAndOpen('${pid}')" style="cursor:pointer">${escapeHtml(p.stockId)}</span> (${p.stockW}×${p.stockH} mm) → <strong>${p.delivered}</strong> Scheibe${p.delivered===1?'':'n'}<span style="color:var(--subtext);font-size:.78rem">${cutInfo}${rotInfo}${wasteInfo}</span></div>`;
+        return `<div class="option-post"><strong>${p.sheetsTaken}× </strong>aus <span class="pick-id" onclick="event.stopPropagation();closeMatchAndOpen('${pid}')" style="cursor:pointer">${escapeHtml(p.stockId)}</span> (${p.stockW}×${p.stockH} mm) → <strong>${p.delivered}</strong> Scheibe${p.delivered===1?'':'n'}<span style="color:var(--subtext);font-size:.78rem">${cutInfo}${rotInfo}</span></div>`;
       }).join('');
       html += `<div class="option-card ${isActive?'active':''}" onclick="event.stopPropagation();selectOption(${idx},${oi})">
         <div class="option-head">
           <span class="option-tag">${isActive?'✓ ':''}${tag}</span>
-          <span class="hit-count ${covCls}" style="margin-left:8px">${covTxt}</span>
-          <span style="margin-left:auto;color:var(--subtext);font-size:.82rem">⌀ Verschnitt <strong>${(opt.comboWastePct*100).toFixed(0)}%</strong></span>
+          <span class="hit-count ${covCls}">${covTxt}</span>
         </div>
+        <div class="option-waste">⌀ Verschnitt <strong>${(opt.comboWastePct*100).toFixed(0)}%</strong></div>
         <div class="option-body">${postsHtml}</div>
       </div>`;
     });
