@@ -3,7 +3,7 @@
 > Diese Datei dient als Übergabe-/Wiedereinstiegspunkt. Inhalt kann in einen neuen Chat kopiert werden, um nahtlos weiterzuarbeiten.
 
 ## Rolle & Kontext
-Du bist ein erfahrener Full-Stack-Entwickler und hilfst mir (Gründer in der Baubranche, **kein Entwickler**) beim Bau einer professionellen Web-App zur Erfassung und Verwaltung von **rückgebautem Flachglas** aus Gebäuderückbauten. Mein Team (2–10 Personen) erfasst Gläser, kategorisiert sie und stellt sie intern und für Kunden bereit. Die App läuft im Browser. **Erkläre Dinge einfach und sag direkt, wenn du dir unsicher bist.**
+Du bist ein erfahrener Full-Stack-Entwickler und hilfst mir (Gründer in der Baubranche, **kein Entwickler**) beim Bau einer professionellen Web-App zur Erfassung und Verwaltung von **rückgebautem Flachglas** aus Gebäuderückbauten. Mein Team (2–10 Personen) erfasst Gläser, kategorisiert sie, stellt sie intern und für Kunden bereit und gleicht eingehende Anfragen gegen den Bestand ab. Die App läuft im Browser. **Erkläre Dinge einfach und sag direkt, wenn du dir unsicher bist.**
 
 ## Live-URL & Hosting
 - **App online:** https://urbanmatter.github.io/refloat-inventory/
@@ -11,14 +11,15 @@ Du bist ein erfahrener Full-Stack-Entwickler und hilfst mir (Gründer in der Bau
 - **Hosting:** GitHub Pages (kostenlos, automatisch bei Push auf `main`)
 
 ## Technischer Stand
-- **Eine einzige Datei:** `index.html` (HTML + CSS + JavaScript inline, ~80 KB)
+- **Eine einzige Datei:** `index.html` (HTML + CSS + JavaScript inline, ~150 KB)
 - **Lokaler Speicherort:** `C:\Users\sebas\Desktop\Claude Projekte\ReFloat Inventory\`
 - **Datenspeicher:**
   - **Primär:** Google Drive (`refloat-data.json`) — Team-Sync
   - **Cache/Fallback:** Browser `localStorage`, Key = `gdt_v1`
 - **Fotos:** Einzelne JPEG-Dateien in Drive (gleicher Ordner wie JSON), Verknüpfung via Drive-File-ID
+- **Externe Bibliotheken:** SheetJS (`xlsx-0.20.3`) via CDN, ausschließlich für Excel-Parsing / Vorlage-Download im Matching-Tab.
 - **Umgebung:** Windows, Python 3.14 + Pillow 12.2 verfügbar
-- **Vorschau-Server:** `.claude/launch.json` → Name `glass-static`, startet `python -m http.server 8777`
+- **Vorschau-Server:** `.claude/launch.json` → Name `glass-static`, startet `python -m http.server 8777` (gapi/Drive funktioniert auf localhost nicht — API-Key ist HTTP-Referrer-restricted)
 
 ## Authentifizierung & Konfiguration
 Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
@@ -29,6 +30,7 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
 | `DRIVE_API_KEY` | `AIzaSyDL1ZSe4DQcTlxe-4LCZGwcTSck6C5i3VQ` | Drive-Block (auf `https://urbanmatter.github.io/*` beschränkt) |
 | `OAUTH_CLIENT_ID` | `383046788151-99h586mb9tmdup6aqsits1i3rgge4ena.apps.googleusercontent.com` | Drive-Block |
 | `DRIVE_SCOPE` | `https://www.googleapis.com/auth/drive.file` | Restriktiv: nur App-erstellte oder via Picker gewählte Dateien |
+| `DEMO_SEED_FLAG` | `'refloat_demo_seeded_v2'` | Matching-Block (Version hochzählen bei erneutem Demo-Bedarf) |
 
 **Google Cloud:** Projekt „ReFloat Inventory", Drive API aktiviert, OAuth-Consent im Test-Modus mit Testnutzern. API-Key ist auf `https://urbanmatter.github.io/*` HTTP-Referrer beschränkt und auf Drive API limitiert.
 
@@ -58,6 +60,13 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
 - **Detailansicht:** alle Felder, Projekt-Banner, Fotogalerie mit Lightbox, Bearbeiten/Löschen.
 - **Export:** CSV (alle Einträge) + PDF-Datenblatt (einzeln, gebrandet).
 
+### ISO-Aufbau-Beschriftung (Phase 3.1)
+- Bei 2-/3-fach Isolierglas werden die Glaslagen im Aufbau-Formular nach **Glasoberflächen-Position** beschriftet (Standard im Glasbau):
+  - 2-fach ISO: „Position 1/2" + „Position 3/4"
+  - 3-fach ISO: „Position 1/2" + „Position 3/4" + „Position 5/6"
+- Beschichtung wird auf konkreter Position (1–6) angegeben statt früher „innen/außen". Das Feld `cside` enthält die Positionsnummer als String (`'1'` … `'6'`).
+- **Backwards-kompatibel:** Alte Einträge mit `cside='innen'`/`'außen'` werden beim Öffnen automatisch auf Position gemappt (`außen` → niedrigere, `innen` → höhere Nummer der jeweiligen Lage). Anzeige in Summary/PDF/CSV: `Pos N`.
+
 ### Authentifizierung (Phase 2)
 - **Login-Screen:** Passwort-Pflicht beim App-Start; Login gilt bis Browser-Tab schließt (sessionStorage).
 
@@ -68,6 +77,7 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
 - **Auto-Sync:** Jede Änderung wird ~1,5s debounced nach Drive geschrieben.
 - **Auto-Reconnect:** Nach Reload stille Re-Authentifizierung mit `prompt:'none'` + E-Mail-Hint. Account-Picker erscheint praktisch nie.
 - **Team-Sharing:** Datei (oder enthaltender Ordner) per Drive-UI mit Teammitgliedern teilen. Andere Teammitglieder wählen sie via Picker. Berechtigungen werden vom Ordner an alle enthaltenen Dateien (inkl. zukünftiger Fotos) vererbt.
+- **Race-Schutz beim Initial-Seed:** `driveLoad()` merged lokal frisch geseedete DEMO-Posten, die in Drive noch fehlen, in die zurückgeladenen Daten — sonst würden sie beim Überschreiben verloren gehen, bevor der debounced Drive-Save sie hochladen konnte.
 
 ### Fotos als Drive-Dateien (Phase 3)
 - Beim Speichern werden neue Fotos als einzelne JPEG-Dateien in den **gleichen Drive-Ordner** wie `refloat-data.json` hochgeladen (Parent-Ordner wird via `drive.files.get(fields:parents)` ermittelt).
@@ -75,6 +85,22 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
 - Anzeige lazy: Platzhalter sofort, im Hintergrund werden Fotos via Cache geladen (`photoCache` Map). Beim PDF-Export werden alle benötigten Fotos vorab geholt, bevor `window.print()` ausgelöst wird.
 - **Backwards-kompatibel:** Alte Base64-Einträge funktionieren weiterhin; werden beim nächsten Editieren+Speichern automatisch auf Drive ausgelagert („Soft-Migration").
 - Beim Löschen eines Eintrags / einer Position werden die zugehörigen Foto-Dateien aus Drive entfernt (fire-and-forget).
+
+### Matching-Tool (Phase 4)
+- **Neuer Tab „🔍 Matching"** zum Import von Kundenanfragen (.xlsx oder .csv) und Abgleich gegen den Bestand.
+- **Workflow:** Datei per Drag&Drop oder Klick auf Dropzone laden → Anfragen-Tabelle erscheint → Einzelabgleich (Zeile aufklappen) oder Listen-Abgleich („↻ Alle abgleichen") → aufklappbare Trefferliste pro Anfrage im gleichen Stil wie Bestandsübersicht.
+- **Excel-Vorlage zum Download:** Button „📥 Excel-Vorlage herunterladen" generiert `refloat-anfrage-vorlage.xlsx` mit Header (App-eigene deutsche Spaltennamen), 4 Beispielzeilen und zweitem Sheet „Hinweise" (Spaltenbedeutung + erlaubte Werte).
+- **Harte Kriterien (UND-Verkettung):** Status = Verfügbar (immer); Glastyp/Dicke/Beschichtung exakt; Maße passt-rein (Bestand ≥ Anfrage, inkl. gedrehter Lage — Drehung mit ↻-Badge markiert); Stückzahl ≥; Farbe exakt (optional, falls in Anfrage gesetzt). Leere Felder in der Anfrage = „egal", werden übersprungen.
+- **Kriterien-Kapselung:** Jedes Kriterium ist eine eigene Funktion (`crit_type`, `crit_thickness`, `crit_dims`, `crit_coating`, `crit_qty`, `crit_color`, `crit_status`) in der Liste `MATCH_CRITERIA`. Erweiterung um Scoring/weiche Kriterien später möglich, ohne die Struktur neu zu schreiben.
+- **Spalten-/Werte-Aliasse:** Erkennt sowohl App-eigene deutsche Bezeichnungen (`Glastyp`, `Glasdicke (mm)`, `Breite`, `Höhe`, `Beschichtung (Kurzinfo)`, `Stückzahl`, `Farbe / Tönung`) als auch englische Spaltennamen (`glass_type`, `thickness_mm`, `min_width_mm`, `min_height_mm`, `coating`, `quantity_required`, `color`) und Kürzel (`Float`→`Floatglas`, `ISO2`/`ISO3`, `Low-E`→`Wärmeschutz`).
+- **Transparenz bei 0/wenig Treffern:** Pro Kriterium wird gezählt, wie viele Bestandsposten passen würden, wenn genau dieses eine Kriterium ignoriert wäre. Anzeige z. B. „Wenn Dicke ignoriert würde → 2 Posten würden passen". So sieht der User sofort, welches Kriterium klemmt.
+
+### Demo-Daten (Auto-Seed)
+- Beim ersten Start auf einem Browser werden einmalig **20 Demo-Glasposten** mit Präfix „DEMO – " im Projektnamen automatisch in den Bestand geseedet (`seedDemoIfNeeded()`). Verteilung: 8× Floatglas, 8× 2-fach Isolierglas, 4× 3-fach Isolierglas mit realistischen Maßen, Beschichtungen und Projekten.
+- Steuerung via Flag `refloat_demo_seeded_v2` in localStorage. Bei Flag-Version-Bump (v2 → v3 …) wird erneut geseedet, ohne lokale Daten zu zerstören.
+- `seedDemoIfNeeded` wird in INIT (nach `load()`) und nach `driveLoad()` aufgerufen. ID-Kollisions-Schutz: bereits vorhandene IDs werden nicht überschrieben.
+- Werden über `persist()` auch nach Drive synchronisiert. Race-Schutz in `driveLoad()` verhindert Datenverlust beim Initial-Seed (siehe Drive-Sync).
+- **Reset für sauberen Re-Seed:** Browser-Konsole → `localStorage.removeItem('gdt_v1'); localStorage.removeItem('refloat_demo_seeded_v2'); location.reload();` Drive-Datei ggf. zusätzlich manuell leeren oder neu erstellen.
 
 ## Datenmodell (ein Eintrag = eine Glasposition)
 ```js
@@ -90,6 +116,7 @@ Drive-Datei:     'refloat-data.json' (gleicher Inhalt, sync'd)
   type,        // Floatglas | 2-fach Isolierglas | 3-fach Isolierglas | VSG | ESG | Verbundglas | Sonstiges
   build,       // null ODER:
                //  ISO:   {kind:'iso', n, lagen:[{art,d,coat,ctype,cside}], spacers:[..], glassMm}
+               //         cside ist Positionsnummer als String ('1'…'6'); Legacy 'innen'/'außen' wird beim Laden gemappt.
                //  VSG/VG:{kind:'lam', lc, lagen:[{art,d}], inter, glassMm}
                //  ESG:   {kind:'esg', d, kante, glassMm}
   glassMm,     // Gesamt-Glasdicke (Summe Lagen, ohne Abstandshalter)
@@ -111,20 +138,20 @@ Drive-Datei:     'refloat-data.json' (gleicher Inhalt, sync'd)
 2. **„Maße" zeigt Glasdicke ohne Abstandshalter** (= Gewichtsbasis). Physische Gesamtdicke inkl. Abstandshalter steht nur im „Glasaufbau".
 3. Position-Feld „Beschichtung (Kurzinfo)" existiert **zusätzlich** zur Beschichtung pro Glaslage (bewusst beibehalten).
 4. **Drive-Scope absichtlich restriktiv (`drive.file`):** Die App hat KEINEN Zugriff auf andere Drive-Inhalte des Users. Bei „Bestehende Datei wählen" zwingend Picker verwenden.
-5. **Konfliktstrategie aktuell:** Last-write-wins. Kein Konflikterkennungs- oder Merge-Mechanismus.
+5. **Konfliktstrategie aktuell:** Last-write-wins. Kein Konflikterkennungs- oder Merge-Mechanismus — mit einer Ausnahme: `driveLoad()` rettet lokal frisch geseedete DEMO-Posten, die in Drive noch nicht angekommen sind, vor dem Überschreiben (Race-Schutz beim Initial-Seed).
 6. **Photo-Lifecycle:** Beim Löschen einer Position werden zugehörige Drive-JPEGs gelöscht. Beim Entfernen einzelner Fotos aus einer Position werden diese beim nächsten Speichern aus Drive entfernt. Falls Drive-Auth zwischen Edit und Save abläuft, werden Fotos lokal als Base64 gespeichert (Fallback).
-7. **Matching-Tool (Phase 4):** Neuer Tab „🔍 Matching" zum Import von Anfragen (.xlsx/.csv). Harte Kriterien (UND): Glastyp, Dicke, Beschichtung exakt; Maße passt-rein inkl. gedrehter Lage (mit ↻-Markierung); Stückzahl ≥; nur Status=Verfügbar. Kriterien als einzelne Funktionen in `MATCH_CRITERIA` gekapselt. Bei 0/wenig Treffern Transparenz-Anzeige: welches Kriterium würde wie viele Posten freigeben, wenn ignoriert. Spalten-/Werte-Aliasse für DE+EN+Kürzel. Excel-Vorlage zum Download (`refloat-anfrage-vorlage.xlsx`) mit zweitem Sheet „Hinweise". SheetJS via CDN (xlsx-0.20.3).
-8. **Demo-Daten:** Beim ersten Start auf einem Browser werden einmalig 20 Demo-Glasposten (8× Floatglas, 8× 2-fach ISO, 4× 3-fach ISO) mit Präfix „DEMO –" im Projektnamen automatisch in den Bestand geseedet (`seedDemoIfNeeded()`). Steuerung via Flag `refloat_demo_seeded_v1` in localStorage. Werden auch nach Drive synchronisiert (über `persist()`). Re-Seed auch nach `driveLoad()`, falls Drive leer zurückkommt. Zum manuellen Reset: beide localStorage-Keys (`gdt_v1`, `refloat_demo_seeded_v1`) löschen.
+7. **Matching-Kriterien sind UND-verkettet und binär** (passt / passt nicht). Kein Scoring. Kriterien gekapselt als Funktionen in `MATCH_CRITERIA`. Maße-Logik berücksichtigt gedrehte Lage (Glaszuschnitt). Nur Status=Verfügbar wird gematcht.
+8. **Spalten-Erkennung im Matching-Import** ist tolerant: case-insensitiv, normalisiert Whitespace/Klammern/Unterstriche. Werte werden über Alias-Maps (`MATCH_TYPE_ALIAS`, `MATCH_COAT_ALIAS`, `MATCH_COLOR_ALIAS`) auf die App-eigenen kanonischen Bezeichnungen gemappt.
 
 ## ⚠️ Bekannte Schwachstellen (für später)
 1. **Kein Auto-Refresh anderer Änderungen.** Wenn Person A speichert, sieht Person B die Änderung erst nach Page-Reload. Workaround: regelmäßig F5. **Fix:** Polling alle ~30s auf `modifiedTime` der Drive-Datei + neuladen bei Änderung.
 2. **Last-write-wins-Konflikte.** Zwei parallele Bearbeitungen → der zweite Speichern überschreibt den ersten. **Fix:** Versions-Check beim Speichern (z.B. `modifiedTime` vor Save prüfen, warnen wenn neuer).
 
 ## ⏭️ Nächster Schritt
-Erst **mit dem Team in der Praxis testen**. Danach Schwachstelle 1 (Auto-Refresh) angehen, wenn sie sich als störend zeigt — Schwachstelle 2 ist bei 2–3 Personen meist unkritisch.
+**Phase 4 Matching-Tool ist live und mit 19/20 DEMO-Posten + manuellen Posten im Live-Drive testbereit.** Erst **mit dem Team in der Praxis testen** (Excel-Vorlage runterladen → Anfrage ausfüllen → Import → Treffer prüfen). Danach Schwachstelle 1 (Auto-Refresh) angehen, wenn sie sich als störend zeigt — Schwachstelle 2 ist bei 2–3 Personen meist unkritisch.
 
 ## GitHub
 - Öffentliches Repository: `urbanmatter/refloat-inventory`
 - Branch: `main` (direkt commiten, kein PR-Workflow nötig)
 - Commits werden via `git push origin main` direkt nach GitHub Pages deployed (~1 Min Verzögerung)
-- Co-Author bei AI-unterstützten Commits: `Claude Sonnet 4.6 <noreply@anthropic.com>`
+- Co-Author bei AI-unterstützten Commits: `Claude Opus 4.7 <noreply@anthropic.com>` (vorherige Commits noch mit Sonnet 4.6 markiert)
