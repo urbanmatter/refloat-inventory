@@ -444,6 +444,10 @@ tr:last-child td{border-bottom:none}
       <div class="dz-hint">Unterstützt: .xlsx, .xls, .csv · Eine Zeile pro Anfrage · Leere Felder = egal</div>
       <input type="file" id="m-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="matchHandleFile(event)">
     </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn btn-soft btn-sm" onclick="downloadMatchTemplate()">📥 Excel-Vorlage herunterladen</button>
+      <button class="btn btn-soft btn-sm" onclick="loadDemoData()">🧪 20 Beispiel-Glasposten in den Bestand laden</button>
+    </div>
     <details style="margin-top:14px">
       <summary style="cursor:pointer;color:var(--subtext);font-size:.9rem">Erkannte Spaltennamen anzeigen</summary>
       <div style="margin-top:10px;font-size:.85rem;color:var(--subtext);line-height:1.6">
@@ -1934,6 +1938,128 @@ function renderMatchDetail(idx){
 function closeMatchAndOpen(id){ openDetail(id); }
 
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+// ─── Excel-Vorlage zum Download ───
+function downloadMatchTemplate(){
+  if(typeof XLSX==='undefined'){ toast('Excel-Bibliothek nicht geladen','err'); return; }
+  const headers = ['Anfrage-ID','Glastyp','Glasdicke (mm)','Breite (mm)','Höhe (mm)','Beschichtung','Stückzahl','Farbe'];
+  const examples = [
+    ['A-001','2-fach Isolierglas',8,1200,800,'Wärmeschutz',15,''],
+    ['A-002','Floatglas',6,900,600,'',40,''],
+    ['A-003','3-fach Isolierglas',12,1000,1500,'Wärmeschutz',10,'Klar'],
+    ['A-004','Floatglas',4,700,500,'',25,'Grün']
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...examples]);
+  ws['!cols'] = [{wch:12},{wch:22},{wch:14},{wch:12},{wch:12},{wch:18},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Anfragen');
+
+  const help = [
+    ['Hinweise zur Anfrage-Vorlage'],
+    [''],
+    ['Spalte','Bedeutung','Erlaubte Werte / Hinweise'],
+    ['Anfrage-ID','Beliebige Kennung pro Anfrage (nur zur Anzeige, kein Matching-Kriterium).','z.B. A-001, R-2024-12'],
+    ['Glastyp','Wird exakt verglichen.','Floatglas · 2-fach Isolierglas · 3-fach Isolierglas · VSG · ESG · Verbundglas · Sonstiges'],
+    ['Glasdicke (mm)','Glasdicke gesamt (ohne Abstandshalter), exakter Match.','z.B. 4, 6, 8, 10, 12'],
+    ['Breite (mm)','Mindestbreite — Bestandsglas muss ≥ sein (Zuschnitt erlaubt).','z.B. 1200'],
+    ['Höhe (mm)','Mindesthöhe — Bestandsglas muss ≥ sein. Gedrehte Lage wird automatisch berücksichtigt.','z.B. 800'],
+    ['Beschichtung','Wird exakt verglichen.','Keine · Wärmeschutz · Sonnenschutz · Sonstiges'],
+    ['Stückzahl','Mindeststückzahl — Bestand muss ≥ sein.','z.B. 15'],
+    ['Farbe','Optional. Wird exakt verglichen.','Klar · Grün · Grau · Bronze · Blau · Sonstiges'],
+    [''],
+    ['Allgemein:'],
+    ['• Leere Felder bedeuten „egal" und werden beim Matching übersprungen.'],
+    ['• Englische Spaltennamen werden ebenfalls erkannt (glass_type, thickness_mm, min_width_mm, min_height_mm, coating, quantity_required, color).'],
+    ['• Kürzel werden erkannt: Float → Floatglas, ISO2 → 2-fach Isolierglas, ISO3 → 3-fach Isolierglas, Low-E → Wärmeschutz.'],
+    ['• Es zählt: Bestand muss ALLE gesetzten Kriterien erfüllen (UND-Verknüpfung).']
+  ];
+  const wsHelp = XLSX.utils.aoa_to_sheet(help);
+  wsHelp['!cols'] = [{wch:18},{wch:52},{wch:62}];
+  XLSX.utils.book_append_sheet(wb, wsHelp, 'Hinweise');
+
+  XLSX.writeFile(wb, 'refloat-anfrage-vorlage.xlsx');
+  toast('Vorlage heruntergeladen','ok');
+}
+
+// ─── Demo-Bestandsdaten ───
+function _isoBuild(n, lagen, spacers){
+  const glassMm = lagen.reduce((s,l)=>s+l.d,0);
+  return {kind:'iso', n, lagen, spacers, glassMm};
+}
+function _isoLayer(d, coatPos){
+  return {art:'Floatglas', d, coat: !!coatPos, ctype: coatPos?'Wärmeschutz':'', cside: coatPos? String(coatPos) : ''};
+}
+function _isoLayerSun(d, coatPos){
+  return {art:'Floatglas', d, coat:true, ctype:'Sonnenschutz', cside: String(coatPos)};
+}
+function _wt(w,h,d){ return +((w/1000)*(h/1000)*(d/1000)*2500).toFixed(1); }
+function _mkEntry(o){
+  const d = o.d != null ? o.d : (o.build ? o.build.glassMm : 0);
+  return Object.assign({
+    projId: o.projId, projLabel: o.building, pos: 1,
+    address: o.address || '', year: o.year,
+    build: null, glassMm: d, d, wt: _wt(o.w,o.h,d),
+    loc: o.loc || '', price: o.price || 0, status: o.status || 'Verfügbar',
+    tags: [], notes: '', photos: [], rStrat: o.rStrat || 'reuse',
+    at: o.at || new Date().toISOString(), upd: o.at || new Date().toISOString()
+  }, o);
+}
+
+const DEMO_DATA_FACTORY = ()=>([
+  // ─── Floatglas (8) ───
+  _mkEntry({id:'FG-2018-001-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'Floatglas', w:800, h:1200, d:4, color:'Klar', coating:'Keine', qty:25, loc:'Halle A, Regal 3', price:35, at:'2024-01-15T10:00:00Z'}),
+  _mkEntry({id:'FG-2018-002-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'Floatglas', w:1000, h:1400, d:6, color:'Klar', coating:'Keine', qty:18, loc:'Halle A, Regal 3', price:55, at:'2024-01-15T10:05:00Z'}),
+  _mkEntry({id:'FG-2019-001-P1', projId:'PRJ-2019-0002', building:'Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'Floatglas', w:900, h:1300, d:5, color:'Klar', coating:'Keine', qty:32, loc:'Halle B, Regal 1', price:45, at:'2024-02-03T09:00:00Z'}),
+  _mkEntry({id:'FG-2020-001-P1', projId:'PRJ-2020-0003', building:'Lagerhalle Nord', address:'Industriestr. 8, Bremen', year:2020, type:'Floatglas', w:1500, h:2200, d:8, color:'Klar', coating:'Keine', qty:8, loc:'Halle C, Regal 2', price:95, at:'2024-02-20T14:00:00Z'}),
+  _mkEntry({id:'FG-2021-001-P1', projId:'PRJ-2021-0004', building:'Bauhof Stadtwerke', address:'Werkstr. 30, Dresden', year:2021, type:'Floatglas', w:1200, h:1800, d:10, color:'Klar', coating:'Keine', qty:12, loc:'Halle C, Regal 4', price:130, at:'2024-03-12T11:00:00Z'}),
+  _mkEntry({id:'FG-2022-001-P1', projId:'PRJ-2022-0005', building:'Gewächshaus Botanik', address:'Parkweg 2, Köln', year:2022, type:'Floatglas', w:700, h:900, d:6, color:'Grün', coating:'Keine', qty:40, loc:'Halle A, Regal 5', price:38, at:'2024-04-01T08:30:00Z'}),
+  _mkEntry({id:'FG-2022-002-P1', projId:'PRJ-2022-0006', building:'Pavillon Stadtpark', address:'Grünanlage 1, Leipzig', year:2022, type:'Floatglas', w:1100, h:1600, d:6, color:'Bronze', coating:'Keine', qty:14, loc:'Halle B, Regal 3', price:62, at:'2024-04-15T10:00:00Z'}),
+  _mkEntry({id:'FG-2023-001-P1', projId:'PRJ-2023-0007', building:'Werkstattgebäude Süd', address:'Handwerkerstr. 22, Stuttgart', year:2023, type:'Floatglas', w:1400, h:2000, d:8, color:'Klar', coating:'Keine', qty:6, loc:'Halle C, Regal 1', price:110, at:'2024-05-02T09:00:00Z'}),
+
+  // ─── 2-fach Isolierglas (8) ───
+  _mkEntry({id:'ISO2-2018-001-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'2-fach Isolierglas', w:1200, h:1500, color:'Klar', coating:'Wärmeschutz', qty:20, loc:'Halle A, Regal 6', price:140,
+    build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-01-15T10:10:00Z'}),
+  _mkEntry({id:'ISO2-2018-002-P1', projId:'PRJ-2018-0001', building:'Bürohaus Sonnenhof', address:'Musterstr. 12, Berlin', year:2018, type:'2-fach Isolierglas', w:1000, h:1300, color:'Klar', coating:'Wärmeschutz', qty:18, loc:'Halle A, Regal 6', price:120,
+    build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-01-15T10:15:00Z'}),
+  _mkEntry({id:'ISO2-2019-001-P1', projId:'PRJ-2019-0002', building:'Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'2-fach Isolierglas', w:800, h:1400, color:'Klar', coating:'Wärmeschutz', qty:35, loc:'Halle B, Regal 4', price:115,
+    build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-02-03T09:10:00Z'}),
+  _mkEntry({id:'ISO2-2019-002-P1', projId:'PRJ-2019-0002', building:'Grundschule Lessing', address:'Schulweg 5, Hamburg', year:2019, type:'2-fach Isolierglas', w:1500, h:2000, color:'Klar', coating:'Wärmeschutz', qty:12, loc:'Halle B, Regal 4', price:185,
+    build: _isoBuild(2, [_isoLayer(6,2), _isoLayer(6)], [20]), at:'2024-02-03T09:20:00Z'}),
+  _mkEntry({id:'ISO2-2020-001-P1', projId:'PRJ-2020-0008', building:'Stadtbibliothek', address:'Lesegasse 4, München', year:2020, type:'2-fach Isolierglas', w:1100, h:1800, color:'Klar', coating:'Sonnenschutz', qty:16, loc:'Halle B, Regal 5', price:175,
+    build: _isoBuild(2, [_isoLayerSun(6,2), _isoLayer(4)], [16]), at:'2024-03-05T10:00:00Z'}),
+  _mkEntry({id:'ISO2-2020-002-P1', projId:'PRJ-2020-0008', building:'Stadtbibliothek', address:'Lesegasse 4, München', year:2020, type:'2-fach Isolierglas', w:900, h:1500, color:'Bronze', coating:'Sonnenschutz', qty:22, loc:'Halle B, Regal 5', price:160,
+    build: _isoBuild(2, [_isoLayerSun(6,2), _isoLayer(4)], [16]), at:'2024-03-05T10:10:00Z'}),
+  _mkEntry({id:'ISO2-2021-001-P1', projId:'PRJ-2021-0009', building:'Hotel am See', address:'Seestr. 17, Konstanz', year:2021, type:'2-fach Isolierglas', w:800, h:1200, color:'Klar', coating:'Wärmeschutz', qty:28, loc:'Halle A, Regal 7', price:135,
+    build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), status:'Reserviert', at:'2024-04-08T11:00:00Z'}),
+  _mkEntry({id:'ISO2-2022-001-P1', projId:'PRJ-2022-0010', building:'Wohnhaus Eichenweg', address:'Eichenweg 9, Hannover', year:2022, type:'2-fach Isolierglas', w:600, h:900, color:'Klar', coating:'Wärmeschutz', qty:50, loc:'Halle A, Regal 8', price:95,
+    build: _isoBuild(2, [_isoLayer(4,2), _isoLayer(4)], [16]), at:'2024-05-12T09:00:00Z'}),
+
+  // ─── 3-fach Isolierglas (4) ───
+  _mkEntry({id:'ISO3-2019-001-P1', projId:'PRJ-2019-0011', building:'Verwaltung Rathaus', address:'Marktplatz 1, Freiburg', year:2019, type:'3-fach Isolierglas', w:1200, h:1600, color:'Klar', coating:'Wärmeschutz', qty:18, loc:'Halle C, Regal 5', price:220,
+    build: _isoBuild(3, [_isoLayer(4,2), _isoLayer(4), _isoLayer(4,5)], [12,12]), at:'2024-02-15T10:00:00Z'}),
+  _mkEntry({id:'ISO3-2020-001-P1', projId:'PRJ-2020-0012', building:'Klinikum Süd', address:'Krankenhausweg 3, Nürnberg', year:2020, type:'3-fach Isolierglas', w:1000, h:2000, color:'Klar', coating:'Wärmeschutz', qty:24, loc:'Halle C, Regal 6', price:245,
+    build: _isoBuild(3, [_isoLayer(4,2), _isoLayer(4), _isoLayer(4,5)], [12,12]), at:'2024-03-20T09:00:00Z'}),
+  _mkEntry({id:'ISO3-2022-001-P1', projId:'PRJ-2022-0013', building:'Schulzentrum Ost', address:'Bildungsweg 6, Essen', year:2022, type:'3-fach Isolierglas', w:1100, h:1700, color:'Klar', coating:'Sonnenschutz', qty:14, loc:'Halle C, Regal 7', price:265,
+    build: _isoBuild(3, [_isoLayerSun(4,2), _isoLayer(4), _isoLayer(4,5)], [12,12]), at:'2024-05-25T11:00:00Z'}),
+  _mkEntry({id:'ISO3-2023-001-P1', projId:'PRJ-2023-0014', building:'Forschungszentrum Tech', address:'Innovationsweg 11, Karlsruhe', year:2023, type:'3-fach Isolierglas', w:1300, h:1900, color:'Grau', coating:'Wärmeschutz', qty:8, loc:'Halle C, Regal 8', price:295,
+    build: _isoBuild(3, [_isoLayer(6,2), _isoLayer(4), _isoLayer(4,5)], [16,16]), at:'2024-06-02T10:00:00Z'})
+]);
+
+function loadDemoData(){
+  const data = DEMO_DATA_FACTORY();
+  if(db.length>0){
+    if(!confirm(`Dein Bestand enthält bereits ${db.length} Posten. ${data.length} Beispielposten zusätzlich hinzufügen?`)) return;
+  } else {
+    if(!confirm(`${data.length} Beispielposten zum Bestand hinzufügen? Bei aktivem Drive-Sync werden sie auch dort gespeichert.`)) return;
+  }
+  // ID-Kollisionen vermeiden
+  const existing = new Set(db.map(e=>e.id));
+  const fresh = data.filter(e=>!existing.has(e.id));
+  if(fresh.length===0){ toast('Alle Beispiel-IDs sind bereits im Bestand','err'); return; }
+  db.push(...fresh);
+  persist(); filter();
+  toast(`${fresh.length} Beispielposten hinzugefügt`, 'ok');
+}
 
 // Drag & Drop
 function matchInitDnD(){
