@@ -1993,23 +1993,33 @@ function expandStockWithRemaining(req, stockList){
   return out;
 }
 
-// Erzeugt aus der nach-Verschnitt-sortierten Match-Liste bis zu 3 Vorschläge.
-// Vorschlag k startet mit matches[k] und wählt dann greedy weitere Posten.
-// Wenn zwei Vorschläge identisch wären (z.B. weil Vorschlag 1 schon mit einem Posten
-// die ganze qty deckt), wird der Duplikat-Vorschlag weggelassen.
+// Erzeugt bis zu 3 Vorschläge, sortiert nach TATSÄCHLICHEM Combo-Verschnitt.
+// Vorgehen:
+//   1. Bis zu 5 Greedy-Kandidaten erzeugen (Startpunkt = matches[0..4]). Mehr Startpunkte
+//      machen die Auswahl robust gegen den Effekt, dass der niedrigste Pro-Stück-Verschnitt
+//      nicht zwingend den niedrigsten Combo-Verschnitt liefert (etwa wenn das letzte
+//      Bestand-Stück nur zur Hälfte genutzt wird).
+//   2. Duplikate aussortieren (gleiche Posts + sheetsTaken).
+//   3. Sortieren: voll deckend zuerst, dann höchste Deckung, dann niedrigster Combo-Verschnitt.
+//   4. Top 3 zurückgeben — Vorschlag 1 ist damit garantiert der beste nach diesen Kriterien.
 function buildOptions(req, matches){
   const targetQty = Number(req.qty) || 0;
   if(matches.length === 0 || targetQty <= 0) return [];
-  const options = [];
-  for(let start = 0; start < Math.min(3, matches.length); start++){
+  const candidates = [];
+  const startCount = Math.min(5, matches.length);
+  for(let start = 0; start < startCount; start++){
     const opt = greedyFromStart(req, matches, start, targetQty);
     if(opt && opt.posts.length > 0){
-      // Duplikat-Check: gleiche Posts + gleiche sheetsTaken? → skip
-      const dup = options.some(o => optionsAreEquivalent(o, opt));
-      if(!dup) options.push(opt);
+      const dup = candidates.some(o => optionsAreEquivalent(o, opt));
+      if(!dup) candidates.push(opt);
     }
   }
-  return options;
+  candidates.sort((a, b) => {
+    if(a.complete !== b.complete) return a.complete ? -1 : 1;
+    if(a.covered !== b.covered) return b.covered - a.covered;
+    return a.comboWastePct - b.comboWastePct;
+  });
+  return candidates.slice(0, 3);
 }
 
 function greedyFromStart(req, matches, startIdx, targetQty){
