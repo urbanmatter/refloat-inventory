@@ -1431,7 +1431,8 @@ function buildSummary(e){
   const b=e.build; if(!b) return '–';
   if(b.kind==='iso'){
     const sideLabel=(l,i)=>{ const cs=String(l.cside||''); if(/^\d+$/.test(cs)) return 'Pos '+cs; if(cs==='außen') return 'Pos '+(2*(i+1)-1); if(cs==='innen') return 'Pos '+(2*(i+1)); return cs; };
-    const ls=b.lagen.map((l,i)=>`L${i+1}: ${l.art} ${l.d}mm${l.coat?` (${l.ctype}, ${sideLabel(l,i)})`:''}`).join(' · ');
+    const posLabel=i=>`Position ${2*i+1}/${2*i+2}`;
+    const ls=b.lagen.map((l,i)=>`${posLabel(i)}: ${l.art} ${l.d}mm${l.coat?` (${l.ctype}, ${sideLabel(l,i)})`:''}`).join(' · ');
     return `${ls} · Abstandshalter: ${b.spacers.map(s=>s+'mm').join(' / ')}`;
   }
   if(b.kind==='lam') return `${b.lc} Lagen — ${b.lagen.map((l,i)=>`L${i+1}: ${l.art} ${l.d}mm`).join(' · ')} · Zwischenlage: ${b.inter}`;
@@ -1775,7 +1776,9 @@ function expandDbForRequest(req, baseDb){
       }
     });
     for(const [d, layerNums] of byD.entries()){
-      const layerLabel = layerNums.length===1 ? `L${layerNums[0]}` : `L${layerNums.join('+')}`;
+      // ISO-Positionsnotation: Lage 1 → "Pos 1/2", Lage 2 → "Pos 3/4", Lage 3 → "Pos 5/6"
+      const posOf = idx => `Pos ${2*idx-1}/${2*idx}`;
+      const layerLabel = layerNums.map(posOf).join('+');
       out.push(Object.assign({}, e, {
         _virtual: true,
         _parentId: e.id,
@@ -2018,7 +2021,7 @@ function renderMatchDetail(idx){
     <tbody>
       ${res.matches.map(e=>{
         const targetId = e._virtual ? e._parentId : e.id;
-        const virtBadge = e._virtual ? `<span class="virtual-badge" title="Unbeschichtete Floatglas-Lage aus Isolierglas-Aufbau (${escapeHtml(e._parentId)})">📦 Lage aus ISO</span>` : '';
+        const virtBadge = e._virtual ? `<span class="virtual-badge" title="Unbeschichtete Floatglas-Scheibe aus Isolierglas-Aufbau (${escapeHtml(e._parentId)})">📦 aus ISO-Aufbau</span>` : '';
         return `<tr onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
         <td><span class="mono">${escapeHtml(e.id)}</span>${e._rotated?'<span class="rotated-badge" title="passt nur gedreht">↻</span>':''}${virtBadge}</td>
         <td>${escapeHtml((e.projLabel||e.building||'–').slice(0,32))}</td>
