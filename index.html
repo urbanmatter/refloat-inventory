@@ -240,8 +240,6 @@ tr:last-child td{border-bottom:none}
 .drive-info{background:var(--bg);border-radius:10px;padding:12px 14px;font-size:.8rem;color:var(--subtext);margin-bottom:14px;line-height:1.5}
 .drive-info code{font-family:ui-monospace,monospace;font-size:.74rem;color:var(--text);background:var(--card);padding:1px 6px;border-radius:5px;border:1px solid var(--border);word-break:break-all}
 </style>
-<script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
-<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 </head>
 <body>
 
@@ -466,6 +464,7 @@ const OAUTH_CLIENT_ID = '383046788151-99h586mb9tmdup6aqsits1i3rgge4ena.apps.goog
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'refloat-data.json';
 const DRIVE_FILE_KEY = 'refloat_drive_file_id';
+const DRIVE_EMAIL_KEY = 'refloat_drive_email';
 
 let driveAccessToken = null;
 let driveFileId = localStorage.getItem(DRIVE_FILE_KEY) || null;
@@ -498,7 +497,7 @@ function gisLoaded(){
     driveTokenClient = google.accounts.oauth2.initTokenClient({
       client_id: OAUTH_CLIENT_ID,
       scope: DRIVE_SCOPE,
-      callback: (resp)=>{
+      callback: async (resp)=>{
         const wasSilent = silentAuthInProgress;
         silentAuthInProgress = false;
         if(resp.error){
@@ -510,10 +509,18 @@ function gisLoaded(){
         driveAccessToken = resp.access_token;
         if(window.gapi && gapi.client) gapi.client.setToken({access_token: resp.access_token});
         updateDriveStatus();
+        // Remember email for future silent auth (uses Drive's own scope, no extra permission)
+        if(!localStorage.getItem(DRIVE_EMAIL_KEY)){
+          try{
+            const about = await gapi.client.drive.about.get({fields:'user'});
+            const mail = about.result.user && about.result.user.emailAddress;
+            if(mail) localStorage.setItem(DRIVE_EMAIL_KEY, mail);
+          }catch(_){}
+        }
         if(driveFileId){
-          driveLoad();  // existing file → just load
+          driveLoad();
         } else if(!wasSilent) {
-          showDriveSetup();  // first time → ask user
+          showDriveSetup();
         }
       }
     });
@@ -530,13 +537,33 @@ function tryAutoReconnect(){
   if(!driveFileId) return;
   if(!driveTokenClient) return;
   silentAuthInProgress = true;
+  const params = {prompt:'none'};                              // truly silent — no account chooser
+  const hint = localStorage.getItem(DRIVE_EMAIL_KEY);
+  if(hint) params.hint = hint;
   try{
-    driveTokenClient.requestAccessToken({prompt: ''});
+    driveTokenClient.requestAccessToken(params);
   }catch(e){
     silentAuthInProgress = false;
     console.warn('Silent auth failed', e);
+    updateDriveStatus();
   }
 }
+
+// Dynamically load Google APIs AFTER our callbacks are defined → no race condition
+(function loadGoogleAPIs(){
+  const a = document.createElement('script');
+  a.src = 'https://accounts.google.com/gsi/client';
+  a.async = true;
+  a.onload = gisLoaded;
+  a.onerror = ()=>{ console.error('GIS script failed'); toast('Google-Login konnte nicht geladen werden','err'); };
+  document.head.appendChild(a);
+  const b = document.createElement('script');
+  b.src = 'https://apis.google.com/js/api.js';
+  b.async = true;
+  b.onload = gapiLoaded;
+  b.onerror = ()=>{ console.error('gapi script failed'); toast('Google-API konnte nicht geladen werden','err'); };
+  document.head.appendChild(b);
+})();
 
 function driveAction(){
   if(DRIVE_API_KEY === 'PASTE_YOUR_API_KEY_HERE'){
@@ -679,6 +706,7 @@ function driveDisconnect(){
   driveAccessToken = null;
   driveFileId = null;
   localStorage.removeItem(DRIVE_FILE_KEY);
+  localStorage.removeItem(DRIVE_EMAIL_KEY);
   closeDriveSetup();
   updateDriveStatus();
   toast('Drive getrennt','ok');
@@ -719,8 +747,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
 const photoCache = {};      // driveFileId -> dataURL
 const photoPending = {};    // driveFileId -> true while fetching
 let drivePhotoFolderId = null;
-// 1x1 transparent placeholder
-const PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150"><rect width="200" height="150" fill="%23F8F8FC"/><text x="50%" y="50%" text-anchor="middle" dy=".35em" font-size="42" fill="%23C7C7D9">⏳</text></svg>';
+// Platzhalter (SVG mit single-quotes, damit es nicht src="..." bricht)
+const PHOTO_PLACEHOLDER = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20200%20150%27%3E%3Crect%20width%3D%27200%27%20height%3D%27150%27%20fill%3D%27%23F8F8FC%27%2F%3E%3Ctext%20x%3D%2750%25%27%20y%3D%2750%25%27%20text-anchor%3D%27middle%27%20dy%3D%27.35em%27%20font-size%3D%2742%27%20fill%3D%27%23C7C7D9%27%3E%E2%8F%B3%3C%2Ftext%3E%3C%2Fsvg%3E";
 
 function isBase64Photo(p){ return typeof p === 'string' && p.startsWith('data:'); }
 function isDrivePhotoRef(p){ return p && typeof p === 'object' && p.id; }
