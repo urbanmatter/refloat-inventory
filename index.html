@@ -109,6 +109,7 @@ input.ro,input[readonly]{background:var(--bg);color:var(--subtext);cursor:not-al
 .transparency ul{margin-top:6px;padding-left:20px}
 .transparency li{margin:2px 0;color:var(--subtext)}
 .rotated-badge{display:inline-block;background:#7C6EF0;color:#fff;font-size:.7rem;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
+.virtual-badge{display:inline-block;background:#1E3A5F;color:#fff;font-size:.7rem;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
 .req-meta{color:var(--subtext);font-size:.85rem;display:flex;flex-wrap:wrap;gap:14px;margin-top:4px}
 .req-meta span{white-space:nowrap}
 
@@ -1753,13 +1754,54 @@ const MATCH_CRITERIA = [
   {key:'color',     label:'Farbe',              fn:crit_color}
 ];
 
+// Erweitert den Bestand um virtuelle "Sub-Posten" aus Isolierglas-Aufbauten,
+// wenn die Anfrage explizit Floatglas wünscht. Pro ISO-Eintrag wird je vorkommender
+// Lagen-Dicke EIN virtueller Posten erzeugt, der alle unbeschichteten Floatglas-Lagen
+// dieser Dicke bündelt (qty = ISO.qty × Anzahl Lagen).
+// Damit kann das Matching unbeschichtete Floatscheiben aus Isoliergläsern als Treffer liefern,
+// ohne dass die normalen Kriterien-Funktionen Sonderfälle bekommen.
+function expandDbForRequest(req, baseDb){
+  if(req.type !== 'Floatglas') return baseDb;
+  const out = [];
+  for(const e of baseDb){
+    out.push(e);
+    if(!e.build || e.build.kind!=='iso' || !Array.isArray(e.build.lagen)) continue;
+    // Gruppiere unbeschichtete Floatglas-Lagen nach Dicke
+    const byD = new Map();
+    e.build.lagen.forEach((l, idx)=>{
+      if(l && l.art==='Floatglas' && !l.coat && +l.d>0){
+        if(!byD.has(l.d)) byD.set(l.d, []);
+        byD.get(l.d).push(idx+1); // 1-basierte Lagen-Nummer
+      }
+    });
+    for(const [d, layerNums] of byD.entries()){
+      const layerLabel = layerNums.length===1 ? `L${layerNums[0]}` : `L${layerNums.join('+')}`;
+      out.push(Object.assign({}, e, {
+        _virtual: true,
+        _parentId: e.id,
+        _layerNums: layerNums,
+        _layerLabel: layerLabel,
+        id: e.id + ' · ' + layerLabel,
+        type: 'Floatglas',
+        d: d,
+        glassMm: d,
+        build: null,
+        coating: 'Keine',
+        qty: (Number(e.qty)||0) * layerNums.length
+      }));
+    }
+  }
+  return out;
+}
+
 // Liefert {matches: [...e mit .rotated flag], failByCriterion: {key: anzahl}, applied: [keys]}
 function matchOne(req){
+  const effectiveDb = expandDbForRequest(req, db);
   const matches = [];
   const applied = [];
   // Welche Kriterien sind in der Anfrage gesetzt? (status zählt immer)
   for(const c of MATCH_CRITERIA){
-    const sample = c.fn(req, db[0]||{});  // null heißt: nicht gesetzt
+    const sample = c.fn(req, effectiveDb[0]||{});  // null heißt: nicht gesetzt
     if(sample !== null) applied.push(c.key);
   }
   // "Fail-Counts": für jedes Kriterium zählen, wie viele Bestand-Posten daran scheitern,
@@ -1770,7 +1812,7 @@ function matchOne(req){
   const wouldPassIfIgnored = {};
   applied.forEach(k=>wouldPassIfIgnored[k]=0);
 
-  for(const e of db){
+  for(const e of effectiveDb){
     let allOk = true;
     const results = {};
     for(const c of MATCH_CRITERIA){
@@ -1974,8 +2016,11 @@ function renderMatchDetail(idx){
       <th>ID</th><th>Projekt</th><th>Typ</th><th>Maße (mm)</th><th>R-Strategie</th><th>Stk.</th><th>Preis</th><th>Status</th><th></th>
     </tr></thead>
     <tbody>
-      ${res.matches.map(e=>`<tr onclick="closeMatchAndOpen('${e.id}')" style="cursor:pointer">
-        <td><span class="mono">${e.id}</span>${e._rotated?'<span class="rotated-badge" title="passt nur gedreht">↻</span>':''}</td>
+      ${res.matches.map(e=>{
+        const targetId = e._virtual ? e._parentId : e.id;
+        const virtBadge = e._virtual ? `<span class="virtual-badge" title="Unbeschichtete Floatglas-Lage aus Isolierglas-Aufbau (${escapeHtml(e._parentId)})">📦 Lage aus ISO</span>` : '';
+        return `<tr onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
+        <td><span class="mono">${escapeHtml(e.id)}</span>${e._rotated?'<span class="rotated-badge" title="passt nur gedreht">↻</span>':''}${virtBadge}</td>
         <td>${escapeHtml((e.projLabel||e.building||'–').slice(0,32))}</td>
         <td>${escapeHtml(e.type)}</td>
         <td style="white-space:nowrap">${dim(e)}</td>
@@ -1983,8 +2028,9 @@ function renderMatchDetail(idx){
         <td>${e.qty||1}</td>
         <td style="white-space:nowrap">${fmt(e.price)}</td>
         <td>${badge(e.status)}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail('${e.id}')">Details</button></td>
-      </tr>`).join('')}
+        <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail('${targetId}')">Details</button></td>
+      </tr>`;
+      }).join('')}
     </tbody>
   </table></div>`;
   return html;
