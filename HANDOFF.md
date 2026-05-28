@@ -114,6 +114,17 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
   - **Bestand-Snapshot:** `computeAvailableAt(uptoIdx)` rechnet aus `db` und den Picks 0..uptoIdx-1 den verbleibenden Bestand. Sub-Treffer-Picks dekrementieren den Parent-ISO mit `ceil(sheetsTaken / layerCount)` Stücken (vereinfachte Buchhaltung; siehe Schwachstelle 3).
   - **UI:** Über der Anfragen-Tabelle die Auswahl-Summary-Box (`renderSummary`) mit Gesamt-Deckung und gewichtetem ⌀-Verschnitt über alle Picks. Unter jeder Anfrage-Zeile dauerhaft die Vorschlags-Karten als Grid (`auto-fit, minmax(280px, 1fr)` — 3 nebeneinander auf breiten Screens, stapeln sich automatisch). Pro Karte: Tag, Deckungs-Badge, EINE Verschnitt-Zahl (Combo-Verschnitt — die ehrliche Größe), Posten-Liste. Aktive Karte mit lila Highlight (`.option-card.active`).
 
+### Projekte-Tab (Phase 6)
+- **Neuer Tab „📁 Projekte"** zum dauerhaften Speichern einer Matching-Auswahl als Projekt-Dokument. Im Matching-Tab erscheint im Auswahl-Summary-Header ein Button **„📁 Projekt anlegen"** sobald mind. ein Vorschlag gewählt ist.
+- **Anlegen-Modal:** Projektname (Pflicht), Kunde (optional), Notizen (optional), Checkbox „Original-Anfrage-Datei mit ablegen". Beim Anlegen wird die importierte .xlsx/.csv (RAM-only via `matchSourceFile`) in den Foto-Drive-Ordner hochgeladen und im Projekt als `sourceFile:{id,n}` verlinkt. Wenn die Original-Datei nicht mehr im RAM ist (z. B. nach Page-Reload), wird die Checkbox ausgeblendet — das Projekt entsteht trotzdem mit Anfrage-Snapshot.
+- **Reservierungs-Buchhaltung pro Bestand-Eintrag:** Neue Felder `reservedQty` (aktiv in Projekten gebunden) und `soldQty` (durch abgeschlossene Projekte unwiderruflich verkauft). Helper `availableQty(e) = qty − reservedQty − soldQty`. Beim Anlegen werden auf allen referenzierten Posten Reservierungen gebucht; bei Sub-Treffern aus ISO wird der Parent-ISO mit `ceil(sheetsTaken / layerCount)` Stücken reserviert (gleiche Buchhaltung wie im Allokator).
+- **Lifecycle:** `aktiv → abgeschlossen` (Reservierungen werden zu Verkäufen umgebucht: `reservedQty -= n; soldQty += n`) oder `aktiv → storniert` (Reservierungen zurück: `reservedQty -= n`). Löschen eines aktiven Projekts gibt Reservierungen zurück; Löschen eines abgeschlossenen Projekts lässt Verkäufe gebucht (Lieferung kann nicht durch Projekt-Löschung rückgängig gemacht werden).
+- **Status-Ableitung:** `recomputeStatus(e)` setzt `e.status` automatisch: `soldQty ≥ qty → 'Verkauft'`, `reservedQty + soldQty ≥ qty → 'Reserviert'`, `reservedQty = 0 && soldQty = 0 && status ≠ 'Verkauft' → 'Verfügbar'`. Status ändert sich also nur an den Stückzahl-Übergängen; teilreservierte Posten bleiben „Verfügbar", das Matching nutzt `availableQty(e)` als ehrliche Verfügbarkeit.
+- **Matching-Integration:** `crit_status` prüft jetzt `availableQty(e) > 0 && status ≠ 'Verkauft'` (nicht mehr stur `status === 'Verfügbar'`). `computeAvailableAt` und ISO-Sub-Treffer-Erzeugung nutzen `availableQty` statt `qty` — Posten mit Restbestand sind weiter matchbar, voll reservierte verschwinden automatisch aus den Treffern.
+- **Schneidskizze (SVG, `cutLayoutSVG`):** Pro gewählter Bestand-Scheibe ein proportional skaliertes Rechteck (max 240×200 px), 15-mm-Randreserve gestrichelt, Anfrage-Zuschnitte als Raster (`floor((B−15)/b) × floor((H−15)/h)`) in Violett mit Maße-Beschriftung außen und Zuschnitt-Zahl oben rechts. **Gruppierung:** Allokationen innerhalb derselben Anfrage-Position mit identischem Schnittplan (gleiche Stock-Maße, Anfrage-Maße, Rotation, cuts/Stück) werden zu EINER Skizze mit „× N Scheiben"-Badge zusammengefasst (`groupAllocsByCutPlan`).
+- **Projekt-Detailansicht:** Header (Name, Kunde, Status-Badge, Stats-Chips, Aktions-Buttons), pro Anfrage-Position eine Card mit Anfrage-Meta + Deckungs-Badge + Grid aus Schneidskizzen-Karten. Klick auf Stock-ID öffnet den Parent-Posten im Übersicht-Tab (`closeMatchAndOpen`). „📥 Original-Anfrage"-Button (`downloadProjectSource`) lädt die verlinkte Drive-Datei.
+- **PDF-Export (`pdfProject`):** Eigene Print-Variante analog zum Datenblatt — Projekt-Header (Branding), Anfrage-Tabelle, pro Position Allokations-Block mit zwei-Spalten-Skizzen-Layout, Footer mit Gesamt-Stats. Nutzt vorhandenes `#parea` + `window.print()`. SVG-Skizzen werden inline mitgedruckt; `page-break-inside:avoid` schützt einzelne Cards.
+
 ### Demo-Daten (Auto-Seed)
 - Beim ersten Start auf einem Browser werden einmalig **20 Demo-Glasposten** mit Präfix „DEMO – " im Projektnamen automatisch in den Bestand geseedet (`seedDemoIfNeeded()`). Verteilung: 8× Floatglas, 8× 2-fach Isolierglas, 4× 3-fach Isolierglas mit realistischen Maßen, Beschichtungen und Projekten.
 - Steuerung via Flag `refloat_demo_seeded_v2` in localStorage. Bei Flag-Version-Bump (v2 → v3 …) wird erneut geseedet, ohne lokale Daten zu zerstören.
@@ -121,11 +132,25 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
 - Werden über `persist()` auch nach Drive synchronisiert. Race-Schutz in `driveLoad()` verhindert Datenverlust beim Initial-Seed (siehe Drive-Sync).
 - **Reset für sauberen Re-Seed:** Browser-Konsole → `localStorage.removeItem('gdt_v1'); localStorage.removeItem('refloat_demo_seeded_v2'); location.reload();` Drive-Datei ggf. zusätzlich manuell leeren oder neu erstellen.
 
-## Datenmodell (ein Eintrag = eine Glasposition)
-```js
-localStorage-Key: 'gdt_v1'  // Array von Einträgen (Cache der Drive-Datei)
-Drive-Datei:     'refloat-data.json' (gleicher Inhalt, sync'd)
+## Datenmodell
 
+### JSON-Format (seit Phase 6)
+```js
+localStorage-Key: 'gdt_v1'        // Cache der Drive-Datei
+Drive-Datei:     'refloat-data.json'
+
+{
+  glass:    [...Glaseinträge],   // siehe unten
+  projects: [...Projekte]         // siehe weiter unten
+}
+
+// BACKWARDS-COMPAT: Wenn `data` ein Array ist (altes Format vor Phase 6),
+// wird es als `glass` interpretiert und `projects` mit [] initialisiert.
+// driveSave() schreibt immer das neue Objekt-Format.
+```
+
+### Glaseintrag (ein Eintrag = eine Glasposition)
+```js
 {
   id,          // z.B. "ISO2-2019-001-P1"
   projId,      // z.B. "PRJ-2019-0001" (gemeinsam für Positionen eines Projekts)
@@ -142,6 +167,10 @@ Drive-Datei:     'refloat-data.json' (gleicher Inhalt, sync'd)
   w, h, d,     // d = glassMm bei Aufbau-Typen
   wt,          // Gewicht = (w/1000)*(h/1000)*(glassMm/1000)*2500 kg, 1 Nachkommastelle, nicht editierbar
   color, coating, qty, loc, price, status,
+  reservedQty, // Phase 6: aktuell in aktiven Projekten gebundene Stückzahl (default 0)
+  soldQty,     // Phase 6: durch abgeschlossene Projekte verkauft (default 0)
+               // availableQty(e) = qty − reservedQty − soldQty
+               // Status wird via recomputeStatus() automatisch aus diesen Stückzahlen abgeleitet.
   tags: [],
   notes,
   rStrat,      // reuse | repair | remanufacturing | repurpose | recycling
@@ -149,6 +178,39 @@ Drive-Datei:     'refloat-data.json' (gleicher Inhalt, sync'd)
                //   - {id:'drive-file-id', n:'photo-xxxx.jpg'}  ← seit Phase 3 (Standard)
                //   - 'data:image/jpeg;base64,…'                ← Legacy, wird beim nächsten Edit migriert
   at, upd      // ISO-Timestamps (erstellt / aktualisiert)
+}
+```
+
+### Projekt (Phase 6)
+```js
+{
+  id,            // "PRJ-MATCH-YYYY-###" (eigener Counter, getrennt von PRJ-YYYY-####
+                 // der Erfassung — Matching-Projekte und Rückbau-Projekte teilen keinen Namensraum)
+  name,          // Pflicht, vom User im Anlegen-Modal eingegeben
+  customer,      // optional
+  notes,         // optional
+  status,        // 'aktiv' | 'abgeschlossen' | 'storniert'
+  createdAt,     // ISO-Timestamp
+  updatedAt,     // ISO-Timestamp (Statusänderung etc.)
+  sourceFile,    // null ODER {id, n} — Drive-File-ID + Name der originalen .xlsx/.csv
+  requests:      // Snapshot der importierten Anfrage-Zeilen (nur die übernommenen Felder)
+    [{reqId, type, d, w, h, coating, color, qty}],
+  allocations:   // Welche Bestand-Scheibe für welche Anfrage-Position
+    [{
+      reqIdx,        // Index in requests[]
+      stockId,       // ID des Bestand-Eintrags (bei Sub-Treffer: ISO-ID + " · Pos X/Y")
+      virtual,       // true wenn Sub-Treffer aus ISO-Aufbau
+      parentId,      // Parent-ISO-ID (nur bei virtual=true)
+      layerCount,    // Anzahl Sub-Lagen im Parent (für Buchhaltung: ceil(sheetsTaken/layerCount) ISOs)
+      stockW, stockH, // Bestand-Maße (für Skizze)
+      reqW, reqH,    // Anfrage-Maße (für Skizze)
+      rotated,       // Schnitt erfolgte um 90° gedreht
+      sheetsTaken,   // Anzahl Bestand-Scheiben entnommen
+      cuts,          // Anfrage-Scheiben pro Bestand-Stück (Raster-Schnitt)
+      delivered,     // gelieferte Anfrage-Scheiben (sheetsTaken × cuts, gekappt durch req.qty)
+      wastePct,      // Verschnitt pro Bestand-Scheibe
+      type, projLabel // Anzeige-Metadaten
+    }]
 }
 ```
 
@@ -164,22 +226,34 @@ Drive-Datei:     'refloat-data.json' (gleicher Inhalt, sync'd)
 9. **Bestand-Erweiterung im Matching ist Anfragen-getrieben, nicht datenmodell-getrieben:** Virtuelle Sub-Posten werden nur erzeugt, wenn die Anfrage explizit Floatglas wünscht (`req.type === 'Floatglas'`). So bleibt das Datenmodell unverändert (kein Persistieren virtueller IDs), keine Phantom-Treffer bei anderen Anfragetypen, keine Sonderfälle in den Kriterien-Funktionen. Die Sub-Posten haben `coating:'Keine'`, fallen also automatisch raus, wenn die Anfrage eine konkrete Beschichtung fordert. Bei `qty` wird **summiert** (ISO.qty × Anzahl unbeschichteter Lagen gleicher Dicke) — entspricht der Anzahl entnehmbarer Scheiben.
 10. **Zuschnitt-Modell: einfacher Raster-Schnitt mit 15 mm Randreserve.** Pro Bestandsstück wird die beste Einzelorientierung gewählt (`floor((B−15)/b) × floor((H−15)/h)`); KEIN Mixed-Orientation auf derselben Scheibe (manche quer, manche längs), KEIN Schnittfugen-Pro-Schnitt-Verlust. Die 15 mm sind eine harte Maße-Anforderung — Bestand muss in beiden Achsen ≥ Anfrage + 15 sein. Pro Bestand-Scheibe wird IMMER NUR EINE Anfrage-Position geschnitten (kein Mixed-Cutting verschiedener Positionen) — das macht Schnittpläne für die Werkstatt eindeutig.
 11. **Tool als Berater, User entscheidet (Phase 4.2):** Der Allokator schlägt pro Position drei Vorschläge vor, der User klickt. Beim Upload wird Vorschlag 1 vorausgewählt (Plan ist sofort fertig), Änderungen einer früheren Position invalidieren ALLE nachfolgenden Picks (`recomputeFromIdx(idx+1)`) und setzen sie auf neue Auto-Vorauswahl — sonst entstehen Bestand-Inkonsistenzen. Sortierung der Vorschläge: voll deckend zuerst, dann höhere Deckung, dann niedrigster Combo-Verschnitt. **Eine** Verschnitt-Zahl pro Karte (Combo-Verschnitt), die Pro-Stück-Verschnitt-Zahl wurde bewusst aus der UI entfernt (war doppelte Information, hat User irritiert).
+12. **Reservierungs-Zähler statt Posten-Split (Phase 6):** Beim Anlegen eines Projekts wird ein Bestand-Posten NICHT in „2 reserviert + 3 verfügbar" gesplittet — stattdessen führt jeder Posten `reservedQty` und `soldQty` als Stückzahl-Buchhaltung. So bleibt die Erfassungs-Historie sauber (eine ID, eine Inventur-Stückzahl), Reservierungen lassen sich kollisionsfrei auf- und abbauen, und das Matching nutzt `availableQty(e) = qty − reservedQty − soldQty` als ehrliche Verfügbarkeit. Pro Allokation wird auf dem referenzierten Posten gebucht (bei Sub-Treffer auf dem Parent-ISO mit `ceil(sheetsTaken/layerCount)`).
+13. **Projekt-Lifecycle ist eine Buchhaltungs-Transition (Phase 6):** `aktiv → abgeschlossen` ist semantisch eine Umbuchung von Reserviert zu Verkauft (nicht: Lieferung an den Kunden erfasst). `aktiv → storniert` gibt frei. Löschen eines abgeschlossenen Projekts lässt die Verkäufe stehen, weil eine Lieferung sich nicht durch Löschen des Projekt-Dokuments rückgängig machen lässt — der Posten ist und bleibt verkauft. Löschen eines aktiven Projekts gibt Reservierungen zurück.
+14. **JSON-Format-Migration (Phase 6):** Drive-Datei und localStorage wechseln von `[...]` zu `{glass:[...], projects:[...]}`. `driveLoad` und `load` akzeptieren beide Formate; `driveSave` und `persist` schreiben immer das neue Objekt-Format. Bestehende Drive-Dateien werden beim ersten Sync nach dem Update automatisch ins neue Format überführt — kein Datenverlust, kein Migrations-Skript nötig.
 
 ## ⚠️ Bekannte Schwachstellen (für später)
 1. **Kein Auto-Refresh anderer Änderungen.** Wenn Person A speichert, sieht Person B die Änderung erst nach Page-Reload. Workaround: regelmäßig F5. **Fix:** Polling alle ~30s auf `modifiedTime` der Drive-Datei + neuladen bei Änderung.
 2. **Last-write-wins-Konflikte.** Zwei parallele Bearbeitungen → der zweite Speichern überschreibt den ersten. **Fix:** Versions-Check beim Speichern (z.B. `modifiedTime` vor Save prüfen, warnen wenn neuer).
 3. **Sub-Treffer-Buchhaltung im Matching-Allokator ist vereinfacht.** Wenn ein ISO-Sub-Treffer für eine Floatglas-Anfrage gewählt wird, wird der Parent-ISO mit `ceil(sheetsTaken / layerCount)` Stücken dekrementiert. Wenn parallel jemand denselben ISO als ISO-Anfrage haben will, gibt es keinen Konflikt-Check — der ISO könnte rechnerisch doppelt vergeben werden (einmal zerlegt für Floatglas-Sub-Treffer, einmal als Ganzes für ISO-Anfrage). In der Praxis selten, weil Anfragetypen meist eindeutig sind. **Fix später:** Cross-Type-Verbrauchsverfolgung auf Parent-ISO-Ebene mit gemeinsamen `_remaining`-Pool.
 4. **Greedy ist nicht global optimal.** Der Allokator ist greedy nach Position-Reihenfolge (mit 5 Startpunkten und Combo-Verschnitt-Sortierung). Bei sehr heterogenen Anfragen-Listen könnte eine globale Optimierung (DP/Branch-and-Bound) bessere Gesamt-Verschnitt-Werte liefern. **Workaround:** User kann manuell andere Vorschläge wählen.
+5. **Manueller „Reserviert"-Status wird durch Projekt-Lifecycle überschrieben.** Wenn ein User in der Erfassung einen Posten manuell auf „Reserviert" setzt (z.B. weil ein Interessent ohne formale Anfrage vorgemerkt ist), und später wird ein Projekt auf diesen Posten gelegt und wieder storniert, setzt `recomputeStatus()` den Status auf „Verfügbar" zurück — die manuelle Vormerkung geht verloren. In der Praxis vermutlich kein Problem, weil Vormerkungen ohnehin nicht über Storno-Zyklen tragen sollen. **Fix später (falls relevant):** ein separates Feld `manualHold:bool` führen, das `recomputeStatus` respektiert.
+6. **Source-File-Upload braucht Drive-Verbindung im Moment des Projekt-Anlegens.** Wenn Drive grade getrennt ist, schlägt der Upload still fehl (Toast-Warnung, Projekt entsteht trotzdem ohne `sourceFile`). Wenn man später eine Datei nachreichen will, gibt es bisher keinen UI-Weg. **Fix später:** Nachträglich „Original-Datei hochladen"-Button im Projekt-Detail.
 
 ## ⏭️ Nächster Schritt
-**Live: Phase 4 Matching · Phase 4.1 Mehrfach-Zuschnitt mit 15 mm-Reserve · Phase 4.2 Interaktiver Allokator mit Vorschlags-Karten · Phase 5 Landing Page.** Praxis-Test mit dem Team auf folgende Punkte:
-- **Interaktiver Allokator**: Mehrere Anfrage-Positionen importieren, prüfen ob Vorschlag 1 jeweils intuitiv ist (geringster Combo-Verschnitt, voll deckend). Eine andere Karte anklicken und prüfen, ob die Auswahl-Summary oben + nachfolgende Positionen sich live aktualisieren. „↻ Auswahl zurücksetzen" testen.
-- **Sub-Treffer aus ISO**: Floatglas-Anfrage importieren, prüfen ob unbeschichtete ISO-Lagen mit `📦 aus ISO-Aufbau`-Badge in den Vorschlägen erscheinen, ob Klick auf Sub-Treffer korrekt den Parent-ISO öffnet, ob Bestand-Buchhaltung beim Mehrfach-Verbrauch konsistent bleibt.
-- **15 mm-Grenzfall**: Anfrage mit Maßen knapp unter Bestandsmaß → kein Treffer (Transparenz-Box erklärt warum).
-- **Position-Notation**: Detail/CSV/PDF/Matching zeigen ISO-Lagen jetzt als „Position 1/2 / 3/4 / 5/6" — vom Team auf Verständlichkeit prüfen.
-- **Landing Page**: Wege „Logo klicken" und „🏠 Start"-Button als Heimweg dem Team zeigen.
+**Live: Phase 4 Matching · Phase 4.1 Mehrfach-Zuschnitt · Phase 4.2 Interaktiver Allokator · Phase 5 Landing Page · Phase 6 Projekte-Tab + Reservierungs-Buchhaltung + Schneidskizze + PDF-Export.**
 
-Danach: **Schwachstelle 1 (Auto-Refresh)** angehen, wenn sie sich als störend zeigt. Schwachstelle 2 (Last-write-wins) ist bei 2–3 Personen meist unkritisch. Schwachstelle 3 (Cross-Type-Sub-Treffer-Konflikt) und 4 (Greedy nicht global optimal) sind Edge-Cases, die nur bei sehr spezifischen Anfragen-Kombinationen sichtbar werden — beim ersten Test mit echten Kundenanfragen evaluieren.
+Praxis-Test mit dem Team:
+- **Projekt-Anlegen aus Matching**: Anfrage importieren → Auswahl prüfen → „📁 Projekt anlegen" klicken → Name + Kunde eingeben → Übernahme prüfen. Original-Datei-Checkbox: nach Page-Reload nicht mehr da (RAM-only Tracking, Absicht).
+- **Reservierungs-Buchhaltung**: Nach Projekt-Anlegen denselben Posten in einer NEUEN Matching-Anfrage suchen → `availableQty` muss reduziert sein. Statistik-Leiste in der Übersicht (`Lagerwert (frei)`) muss kleiner werden.
+- **Lifecycle**: Projekt abschließen → in der Übersicht erkennen, ob Status auf „Verkauft" springt (nur wenn alle Stücke weg sind). Stornieren → Reservierung muss komplett zurückfließen.
+- **Schneidskizze**: Bei Anfragen mit Maßen weit unter Bestandsmaß sollte die Skizze ein Raster zeigen (z.B. 4 Stücke pro Scheibe). Bei mehreren identischen Schnitten in derselben Position → eine Skizze mit „× N"-Badge.
+- **PDF-Export pro Projekt**: SVG-Skizzen müssen mitgedruckt werden, keine Card sollte mittig zerrissen sein (page-break-inside).
+- **JSON-Migration**: Bestehende Drive-Datei wird beim ersten Sync ins neue `{glass, projects}`-Format überführt — User mit alten Daten sollte einmal manuell sicherstellen, dass kein Eintrag fehlt nach dem Update.
+
+**Was nicht im Test-Setup auf localhost prüfbar war (HANDOFF Hosting-Hinweis):**
+- Drive-Upload der Original-Anfrage-Datei (`uploadSourceFileToDrive`) — nutzt dieselbe Multipart-Mechanik wie `uploadPhotoToDrive`, sollte funktionieren, aber beim ersten Live-Test bestätigen.
+- Tatsächliches PDF-Aussehen im Browser-Druckdialog (Skalierung der SVGs, Seitenumbrüche bei vielen Positionen).
+
+Danach: **Schwachstelle 1 (Auto-Refresh)** angehen, wenn sie sich als störend zeigt. Schwachstellen 3 + 4 + 5 + 6 sind Edge-Cases, erst bei konkretem Trigger fixen.
 
 ## GitHub
 - Öffentliches Repository: `urbanmatter/refloat-inventory`
