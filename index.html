@@ -203,6 +203,47 @@ tr:last-child td{border-bottom:none}
 
 .badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:.73rem;font-weight:700}
 .b-av{background:#E7F6EC;color:#1F7A45}.b-re{background:#FFF4E0;color:#B5790B}.b-so{background:#FDEAEA;color:#C0392B}
+/* Verfügbarkeits-Balken (Bestand frei/reserviert/verkauft) */
+.av-wrap{display:flex;flex-direction:column;gap:3px;min-width:92px}
+.av-bar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:#EDEFF3}
+.av-seg{height:100%}
+.av-free{background:#1F7A45}.av-res{background:#E0A012}.av-sold{background:#C0392B}
+.av-lbl{font-size:.72rem;color:var(--subtext);white-space:nowrap}
+.av-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:9px;font-size:.85rem;color:var(--text)}
+.av-legend i.av-dot{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.av-key{display:flex;align-items:center;gap:12px;font-size:.72rem;color:var(--subtext)}
+.av-key i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:3px;vertical-align:middle}
+/* Auswertungs-Dashboard (oben in der Übersicht) */
+.dash{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-bottom:18px}
+.dash-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px}
+@media(min-width:760px){.dash-kpis{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.kpi-v{font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.1}
+.kpi-l{font-size:.78rem;color:var(--subtext);margin-top:3px}
+.dash-grid{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:760px){.dash-grid{grid-template-columns:minmax(0,280px) 1fr}}
+.dash-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.dash-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:12px}
+.dash-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.dash-seg button{border:0;background:var(--card);color:var(--subtext);font-size:.72rem;padding:3px 10px;cursor:pointer;font-weight:600}
+.dash-seg button.active{background:var(--primary);color:#fff}
+.donut-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.donut{width:118px;height:118px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.donut-hole{width:80px;height:80px;border-radius:50%;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.donut-pct{font-size:1.35rem;font-weight:800;color:var(--text);line-height:1}
+.donut-sub{font-size:.68rem;color:var(--subtext)}
+.donut-leg{display:flex;flex-direction:column;gap:6px;font-size:.8rem;min-width:150px;flex:1}
+.donut-leg span{display:flex;align-items:center;gap:7px;color:var(--text)}
+.donut-leg i{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}
+.donut-leg b{margin-left:auto;font-variant-numeric:tabular-nums}
+.typebars{display:flex;flex-direction:column;gap:10px}
+.tb-row{display:grid;grid-template-columns:104px 1fr auto;align-items:center;gap:10px;font-size:.8rem}
+.tb-label{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-track{height:14px;background:#EDEFF3;border-radius:7px;overflow:hidden}
+.tb-fill{height:100%;display:flex;border-radius:7px;overflow:hidden;min-width:3px}
+.tb-free{background:#1F7A45;height:100%}.tb-bound{background:#E0A012;height:100%}
+.tb-val{color:var(--subtext);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dash-empty{color:var(--subtext);font-size:.85rem}
 
 /* ── Cards view ── */
 .cards{display:grid;grid-template-columns:1fr;gap:16px}
@@ -446,6 +487,8 @@ tr:last-child td{border-bottom:none}
     <button class="btn btn-outline btn-sm" onclick="exportCSV()">↓ CSV Export</button>
   </div>
 
+  <div id="dashboard" class="dash"></div>
+
   <div class="toolbar">
     <div class="search-wrap">
       <span class="si-icon">🔍</span>
@@ -491,7 +534,7 @@ tr:last-child td{border-bottom:none}
         <th onclick="sortClick('type')">Typ</th>
         <th>Maße (mm)</th>
         <th>R-Strategie</th>
-        <th onclick="sortClick('qty')">Stk.</th>
+        <th onclick="sortClick('qty')">Bestand</th>
         <th onclick="sortClick('price')">Preis</th>
         <th onclick="sortClick('status')">Status</th>
         <th>Aktionen</th>
@@ -2102,6 +2145,40 @@ function buildSummary(e){
   return '–';
 }
 function badge(s){ const m={'Verfügbar':'b-av','Reserviert':'b-re','Verkauft':'b-so'}; return `<span class="badge ${m[s]||'b-av'}">${s}</span>`; }
+// Zerlegt die Stückzahl eines Postens in frei / reserviert / verkauft (für die Verfügbarkeits-Anzeige).
+// Basis: die exakten Projekt-Zähler (soldQty, reservedQty). Anschließend übersteuert ein MANUELL
+// gesetzter Status den FREIEN Rest — so wirkt z.B. ein im Erfassungsformular auf "Reserviert"
+// gesetzter Posten (Zähler = 0) trotzdem komplett gebunden. Projekt-Buchungen bleiben exakt erhalten.
+// Damit entspricht "frei" genau dem, was das Matching anbietet (crit_status verlangt status==='Verfügbar').
+function availSplit(e){
+  const total = Math.max(0, Number(e.qty)||0);
+  let sold  = Math.min(total, Number(e.soldQty)||0);
+  let res   = Math.min(Math.max(0, total - sold), Number(e.reservedQty)||0);
+  let free  = Math.max(0, total - sold - res);
+  if(e.status === 'Verkauft'){ sold += free; free = 0; }
+  else if(e.status === 'Reserviert'){ res += free; free = 0; }
+  return {total, sold, res, free};
+}
+// Gestapelter Mini-Balken: grün=frei, bernstein=reserviert, rot=verkauft. showLabel=false blendet "x/y frei" aus.
+function availabilityBar(e, showLabel){
+  const {total, sold, res, free} = availSplit(e);
+  const pct = n => total>0 ? (n/total*100) : 0;
+  const title = `Verfügbar ${free} · Reserviert ${res} · Verkauft ${sold} (gesamt ${total})`;
+  const seg = (n,cls) => n>0 ? `<span class="av-seg ${cls}" style="width:${pct(n)}%"></span>` : '';
+  const bar = `<div class="av-bar">${seg(free,'av-free')}${seg(res,'av-res')}${seg(sold,'av-sold')}</div>`;
+  const lbl = showLabel===false ? '' : `<div class="av-lbl">${free}/${total} frei</div>`;
+  return `<div class="av-wrap" title="${title}">${bar}${lbl}</div>`;
+}
+// Balken + ausgeschriebene, farbcodierte Aufschlüsselung — für die Detailansicht.
+function availabilityBreakdown(e){
+  const {sold, res, free} = availSplit(e);
+  return `${availabilityBar(e, false)}
+    <div class="av-legend">
+      <span><i class="av-dot av-free"></i>${free} verfügbar</span>
+      <span><i class="av-dot av-res"></i>${res} reserviert</span>
+      <span><i class="av-dot av-sold"></i>${sold} verkauft</span>
+    </div>`;
+}
 function dim(e){ return (e.w||e.h)?`${e.w||'?'} × ${e.h||'?'} × ${e.d||'?'}`:'–'; }
 function fmt(p){ return p>0?'€ '+p.toLocaleString('de-DE',{minimumFractionDigits:2}):'–'; }
 
@@ -2140,6 +2217,7 @@ function setView(v){ view=v; g0('vt').classList.toggle('active',v==='t'); g0('vc
 
 function render(){
   updateStats();
+  renderDashboard();
   const none=fd.length===0;
   g0('v-empty').style.display=none?'block':'none';
   g0('v-tbl').style.display=(view==='t'&&!none)?'block':'none';
@@ -2151,14 +2229,99 @@ function updateStats(){
   const av=db.filter(e=>e.status==='Verfügbar').length, re=db.filter(e=>e.status==='Reserviert').length, so=db.filter(e=>e.status==='Verkauft').length;
   // Lagerwert: nur die noch verfügbaren Stücke zählen (Reservierungen sind noch nicht abgerechnet,
   // aber im verfügbaren Bestand verbucht — sie reduzieren den frei vermarktbaren Wert).
-  const val=db.reduce((s,e)=> s + (Number(e.price)||0) * availableQty(e), 0);
+  // Balken-Legende nur einblenden, wenn mind. ein Posten gebunden/verkauft ist
+  // (über Projekt-Zähler ODER manuellen Status — availSplit berücksichtigt beides).
+  const hasBound = db.some(e => { const s = availSplit(e); return s.res > 0 || s.sold > 0; });
+  const legend = hasBound ? `<div class="chip av-key"><span><i class="av-free"></i> frei</span><span><i class="av-res"></i> reserviert</span><span><i class="av-sold"></i> verkauft</span></div>` : '';
+  // Gesamt-Anzahl + Lagerwert wandern ins Dashboard (renderDashboard) — hier nur Status-Verteilung,
+  // Legende und ggf. die gefilterte Anzeige-Anzahl.
   g0('stats').innerHTML=`
-    <div class="chip"><strong>${db.length}</strong> Gesamt</div>
     <div class="chip"><strong>${av}</strong> Verfügbar</div>
     <div class="chip"><strong>${re}</strong> Reserviert</div>
     <div class="chip"><strong>${so}</strong> Verkauft</div>
-    <div class="chip">Lagerwert (frei): <strong>€ ${val.toLocaleString('de-DE',{minimumFractionDigits:2})}</strong></div>
-    ${fd.length<db.length?`<div class="chip hi"><strong>${fd.length}</strong> angezeigt</div>`:''}`;
+    ${fd.length<db.length?`<div class="chip hi"><strong>${fd.length}</strong> angezeigt</div>`:''}
+    ${legend}`;
+}
+
+// ─── Auswertungs-Dashboard ───
+// Aggregiert ALLE Bestandsgläser (db, unabhängig von Filtern). Ring = Verfügbarkeit
+// (frei/reserviert/verkauft) in Stück ODER m² (umschaltbar). Balken = m² je Glastyp,
+// gestapelt frei (grün) / gebunden (amber). Werte kommen aus availSplit → konsistent
+// mit den Bestand-Balken in der Liste und mit dem, was das Matching anbietet.
+let dashMode = 'stk'; // 'stk' | 'm2'
+function setDashMode(m){ dashMode = m; renderDashboard(); }
+function entryArea(e){ return ((Number(e.w)||0)/1000) * ((Number(e.h)||0)/1000); } // m² je Scheibe
+function fmtM2(x){ return x.toLocaleString('de-DE',{maximumFractionDigits: (x>0 && x<10)?1:0}) + ' m²'; }
+function renderDashboard(){
+  const host = g0('dashboard'); if(!host) return;
+  if(!db.length){ host.style.display='none'; return; }
+  host.style.display='block';
+  let stkTotal=0,stkFree=0,stkRes=0,stkSold=0, m2Total=0,m2Free=0,m2Res=0,m2Sold=0, valFree=0;
+  const byType = new Map();
+  for(const e of db){
+    const s = availSplit(e), a = entryArea(e);
+    stkTotal+=s.total; stkFree+=s.free; stkRes+=s.res; stkSold+=s.sold;
+    m2Total+=a*s.total; m2Free+=a*s.free; m2Res+=a*s.res; m2Sold+=a*s.sold;
+    valFree += (Number(e.price)||0) * s.free;
+    const t = e.type || 'Sonstiges';
+    if(!byType.has(t)) byType.set(t, {total:0,free:0,bound:0});
+    const o = byType.get(t);
+    o.total += a*s.total; o.free += a*s.free; o.bound += a*(s.res+s.sold);
+  }
+  const kpis = `
+    <div class="kpi"><div class="kpi-v">${db.length}</div><div class="kpi-l">Positionen</div></div>
+    <div class="kpi"><div class="kpi-v">${fmtM2(m2Total)}</div><div class="kpi-l">Fläche gesamt</div></div>
+    <div class="kpi"><div class="kpi-v">${fmtM2(m2Free)}</div><div class="kpi-l">Fläche frei</div></div>
+    <div class="kpi"><div class="kpi-v">€ ${valFree.toLocaleString('de-DE',{maximumFractionDigits:0})}</div><div class="kpi-l">Lagerwert frei</div></div>`;
+  // Ring
+  const isM2 = dashMode==='m2';
+  const tot = isM2?m2Total:stkTotal, free = isM2?m2Free:stkFree, res = isM2?m2Res:stkRes, sold = isM2?m2Sold:stkSold;
+  const pct = n => tot>0 ? (n/tot*100) : 0;
+  const pFree=pct(free), pRes=pct(res);
+  const grad = tot>0
+    ? `conic-gradient(#1F7A45 0 ${pFree}%, #E0A012 ${pFree}% ${pFree+pRes}%, #C0392B ${pFree+pRes}% 100%)`
+    : '#EDEFF3';
+  const num = n => isM2 ? fmtM2(n) : (n.toLocaleString('de-DE')+' Stk');
+  const donut = `
+    <div class="dash-card">
+      <div class="dash-h">Verfügbarkeit
+        <span class="dash-seg">
+          <button class="${!isM2?'active':''}" onclick="setDashMode('stk')">Stück</button>
+          <button class="${isM2?'active':''}" onclick="setDashMode('m2')">m²</button>
+        </span>
+      </div>
+      <div class="donut-row">
+        <div class="donut" style="background:${grad}"><div class="donut-hole">
+          <div class="donut-pct">${tot>0?Math.round(pFree):0}%</div><div class="donut-sub">frei</div>
+        </div></div>
+        <div class="donut-leg">
+          <span><i class="av-free"></i> frei <b>${num(free)}</b></span>
+          <span><i class="av-res"></i> reserviert <b>${num(res)}</b></span>
+          <span><i class="av-sold"></i> verkauft <b>${num(sold)}</b></span>
+          <span style="border-top:1px solid var(--border);padding-top:5px">Σ gesamt <b>${num(tot)}</b></span>
+        </div>
+      </div>
+    </div>`;
+  // m²-Balken je Typ
+  const types = [...byType.entries()].filter(([,o])=>o.total>0).sort((a,b)=>b[1].total-a[1].total);
+  const maxT = types.length ? types[0][1].total : 0;
+  const bars = types.map(([t,o])=>{
+    const wRel = maxT>0 ? (o.total/maxT*100) : 0;
+    const fFree = o.total>0 ? (o.free/o.total*100) : 0, fBound = o.total>0 ? (o.bound/o.total*100) : 0;
+    return `<div class="tb-row">
+      <div class="tb-label" title="${t}">${t}</div>
+      <div class="tb-track"><div class="tb-fill" style="width:${wRel}%" title="${t}: ${fmtM2(o.total)} (frei ${fmtM2(o.free)} · gebunden ${fmtM2(o.bound)})">
+        <span class="tb-free" style="width:${fFree}%"></span><span class="tb-bound" style="width:${fBound}%"></span>
+      </div></div>
+      <div class="tb-val">${fmtM2(o.total)}</div>
+    </div>`;
+  }).join('');
+  const typeCard = `
+    <div class="dash-card">
+      <div class="dash-h">m² je Glastyp <span style="font-weight:400;color:var(--subtext);font-size:.72rem">grün = frei · amber = gebunden</span></div>
+      <div class="typebars">${bars || '<div class="dash-empty">Keine Maße erfasst.</div>'}</div>
+    </div>`;
+  host.innerHTML = `<div class="dash-kpis">${kpis}</div><div class="dash-grid">${donut}${typeCard}</div>`;
 }
 function renderTable(){
   g0('tbody').innerHTML=fd.map(e=>`
@@ -2168,7 +2331,7 @@ function renderTable(){
       <td>${e.type}</td>
       <td style="white-space:nowrap">${dim(e)}</td>
       <td>${rTag(e.rStrat)}</td>
-      <td>${e.qty||1}</td>
+      <td style="min-width:104px">${availabilityBar(e)}</td>
       <td style="white-space:nowrap">${fmt(e.price)}</td>
       <td>${badge(e.status)}</td>
       <td class="td-act" onclick="event.stopPropagation()">
@@ -2190,6 +2353,7 @@ function renderCards(){
         <span>📍 ${(e.projLabel||e.building||'–').slice(0,30)}</span>
         <span>📐 ${dim(e)} mm · ${e.wt||0} kg</span>
       </div>${tagHtml}
+      <div style="margin:9px 0 2px">${availabilityBar(e)}</div>
       <div class="gc-foot">
         <div class="gc-price">${e.price>0?'€ '+e.price.toLocaleString('de-DE'):'Auf Anfrage'}</div>
         <div style="display:flex;align-items:center;gap:7px">${rTag(e.rStrat)}${badge(e.status)}</div>
@@ -2220,8 +2384,9 @@ function openDetail(id){
       <div class="df"><div class="dl">Farbe / Tönung</div><div class="dv">${e.color||'–'}</div></div>
       <div class="df"><div class="dl">Beschichtung</div><div class="dv">${e.coating||'–'}</div></div>
       <div class="df full"><div class="dl">R-Strategie</div><div class="dv">${r?`<span class="rico">${r.icon}</span> <strong>${r.label}</strong> — <span style="color:var(--subtext)">${r.desc}</span>`:'–'}</div></div>
-      <div class="df"><div class="dl">Stückzahl</div><div class="dv">${e.qty||1}</div></div>
+      <div class="df"><div class="dl">Stückzahl gesamt</div><div class="dv">${e.qty||1}</div></div>
       <div class="df"><div class="dl">Lagerort</div><div class="dv">${e.loc||'–'}</div></div>
+      <div class="df full"><div class="dl">Bestand (Verfügbarkeit)</div><div class="dv">${availabilityBreakdown(e)}</div></div>
       <div class="df"><div class="dl">Preis</div><div class="dv" style="font-weight:700;color:var(--primary)">${e.price>0?'€ '+e.price.toLocaleString('de-DE',{minimumFractionDigits:2}):'Auf Anfrage'}</div></div>
       <div class="df"><div class="dl">Status</div><div class="dv">${badge(e.status)}</div></div>
       <div class="df"><div class="dl">Erfasst</div><div class="dv">${e.at?new Date(e.at).toLocaleDateString('de-DE'):'–'}</div></div>
