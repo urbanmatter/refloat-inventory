@@ -26,7 +26,7 @@ Alle Konstanten stehen ganz oben im `<script>`-Block in `index.html`:
 
 | Konstante | Wert | Wo geändert |
 |---|---|---|
-| `APP_PASSWORD` | aktuell `'CHANGEME'` (Platzhalter) | Login-Block in JS |
+| `APP_PASSWORD` | `'refloat-beta'` (Beta-Test; im öffentlichen Code sichtbar = nur leichte Schranke) | Login-Block in JS |
 | `DRIVE_API_KEY` | `AIzaSyDL1ZSe4DQcTlxe-4LCZGwcTSck6C5i3VQ` | Drive-Block (auf `https://urbanmatter.github.io/*` beschränkt) |
 | `OAUTH_CLIENT_ID` | `383046788151-99h586mb9tmdup6aqsits1i3rgge4ena.apps.googleusercontent.com` | Drive-Block |
 | `DRIVE_SCOPE` | `https://www.googleapis.com/auth/drive.file` | Restriktiv: nur App-erstellte oder via Picker gewählte Dateien |
