@@ -241,7 +241,7 @@ tr:last-child td{border-bottom:none}
 .tb-label{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tb-track{height:14px;background:#EDEFF3;border-radius:7px;overflow:hidden}
 .tb-fill{height:100%;display:flex;border-radius:7px;overflow:hidden;min-width:3px}
-.tb-free{background:#1F7A45;height:100%}.tb-bound{background:#E0A012;height:100%}
+.tb-free{background:#1F7A45;height:100%}.tb-res{background:#E0A012;height:100%}.tb-sold{background:#C0392B;height:100%}
 .tb-val{color:var(--subtext);white-space:nowrap;font-variant-numeric:tabular-nums}
 .dash-empty{color:var(--subtext);font-size:.85rem}
 
@@ -491,7 +491,7 @@ tr:last-child td{border-bottom:none}
 <!-- ═══════════════════════ LIST ═══════════════════════ -->
 <section class="section" id="section-list">
   <div class="sec-hd">
-    <h1>Glaselemente <span class="cnt" id="cnt">0</span></h1>
+    <h1>Übersicht Glaslager <span class="cnt" id="cnt">0</span></h1>
     <button class="btn btn-outline btn-sm" onclick="exportCSV()">↓ CSV Export</button>
   </div>
 
@@ -612,6 +612,7 @@ tr:last-child td{border-bottom:none}
       <div class="dz-hint">Unterstützt: .xlsx, .xls, .csv · Eine Zeile pro Anfrage · Leere Felder = egal</div>
       <input type="file" id="m-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="matchHandleFile(event)">
     </div>
+    <div id="m-file-status" style="display:none;margin-top:12px;padding:10px 14px;background:#EAF7EE;border:1px solid #CDEBD6;border-radius:10px;font-size:.9rem;align-items:center;gap:8px"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
       <button class="btn btn-soft btn-sm" onclick="downloadMatchTemplate()">📥 Excel-Vorlage herunterladen</button>
     </div>
@@ -1442,6 +1443,7 @@ function renderProjectDetail(){
   if(p.status === 'aktiv'){
     actions = `
       <button class="btn btn-primary btn-sm" onclick="completeProject('${p.id}')">✓ Als abgeschlossen markieren</button>
+      <button class="btn btn-outline btn-sm" onclick="rematchProject('${p.id}')" title="Die gespeicherte Anfrage erneut gegen den aktuellen Bestand (inkl. neu erfasster Gläser) abgleichen">🔄 Mit aktuellem Bestand neu abgleichen</button>
       <button class="btn btn-ghost btn-sm" onclick="cancelProject('${p.id}')">↺ Stornieren</button>
       <button class="btn btn-outline btn-sm" onclick="pdfProject('${p.id}')">📄 PDF exportieren</button>
       <button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 Löschen</button>`;
@@ -2341,7 +2343,7 @@ function availabilityBar(e, showLabel){
   const title = `Verfügbar ${free} · Reserviert ${res} · Verkauft ${sold} (gesamt ${total})`;
   const seg = (n,cls) => n>0 ? `<span class="av-seg ${cls}" style="width:${pct(n)}%"></span>` : '';
   const bar = `<div class="av-bar">${seg(free,'av-free')}${seg(res,'av-res')}${seg(sold,'av-sold')}</div>`;
-  const lbl = showLabel===false ? '' : `<div class="av-lbl">${free}/${total} frei</div>`;
+  const lbl = showLabel===false ? '' : `<div class="av-lbl">${free}/${total} verfügbar</div>`;
   return `<div class="av-wrap" title="${title}">${bar}${lbl}</div>`;
 }
 // Balken + ausgeschriebene, farbcodierte Aufschlüsselung — für die Detailansicht.
@@ -2407,7 +2409,7 @@ function updateStats(){
   // Balken-Legende nur einblenden, wenn mind. ein Posten gebunden/verkauft ist
   // (über Projekt-Zähler ODER manuellen Status — availSplit berücksichtigt beides).
   const hasBound = db.some(e => { const s = availSplit(e); return s.res > 0 || s.sold > 0; });
-  const legend = hasBound ? `<div class="chip av-key"><span><i class="av-free"></i> frei</span><span><i class="av-res"></i> reserviert</span><span><i class="av-sold"></i> verkauft</span></div>` : '';
+  const legend = hasBound ? `<div class="chip av-key"><span><i class="av-free"></i> Verfügbar</span><span><i class="av-res"></i> Reserviert</span><span><i class="av-sold"></i> Verkauft</span></div>` : '';
   // Gesamt-Anzahl + Lagerwert wandern ins Dashboard (renderDashboard) — hier nur Status-Verteilung,
   // Legende und ggf. die gefilterte Anzeige-Anzahl.
   g0('stats').innerHTML=`
@@ -2420,9 +2422,9 @@ function updateStats(){
 
 // ─── Auswertungs-Dashboard ───
 // Aggregiert ALLE Bestandsgläser (db, unabhängig von Filtern). Ring = Verfügbarkeit
-// (frei/reserviert/verkauft) in Stück ODER m² (umschaltbar). Balken = m² je Glastyp,
-// gestapelt frei (grün) / gebunden (amber). Werte kommen aus availSplit → konsistent
-// mit den Bestand-Balken in der Liste und mit dem, was das Matching anbietet.
+// (Verfügbar/Reserviert/Verkauft) in Stück ODER m² (umschaltbar). Balken = m² je Glastyp,
+// gestapelt Verfügbar (grün) / Reserviert (amber) / Verkauft (rot). Werte kommen aus
+// availSplit → konsistent mit den Bestand-Balken in der Liste und mit dem Matching.
 let dashMode = 'stk'; // 'stk' | 'm2'
 function setDashMode(m){ dashMode = m; renderDashboard(); }
 function entryArea(e){ return ((Number(e.w)||0)/1000) * ((Number(e.h)||0)/1000); } // m² je Scheibe
@@ -2439,9 +2441,9 @@ function renderDashboard(){
     m2Total+=a*s.total; m2Free+=a*s.free; m2Res+=a*s.res; m2Sold+=a*s.sold;
     valFree += (Number(e.price)||0) * s.free;
     const t = e.type || 'Sonstiges';
-    if(!byType.has(t)) byType.set(t, {total:0,free:0,bound:0});
+    if(!byType.has(t)) byType.set(t, {total:0,free:0,res:0,sold:0});
     const o = byType.get(t);
-    o.total += a*s.total; o.free += a*s.free; o.bound += a*(s.res+s.sold);
+    o.total += a*s.total; o.free += a*s.free; o.res += a*s.res; o.sold += a*s.sold;
   }
   const kpis = `
     <div class="kpi"><div class="kpi-v">${db.length}</div><div class="kpi-l">Positionen</div></div>
@@ -2467,12 +2469,12 @@ function renderDashboard(){
       </div>
       <div class="donut-row">
         <div class="donut" style="background:${grad}"><div class="donut-hole">
-          <div class="donut-pct">${tot>0?Math.round(pFree):0}%</div><div class="donut-sub">frei</div>
+          <div class="donut-pct">${tot>0?Math.round(pFree):0}%</div><div class="donut-sub">Verfügbar</div>
         </div></div>
         <div class="donut-leg">
-          <span><i class="av-free"></i> frei <b>${num(free)}</b></span>
-          <span><i class="av-res"></i> reserviert <b>${num(res)}</b></span>
-          <span><i class="av-sold"></i> verkauft <b>${num(sold)}</b></span>
+          <span><i class="av-free"></i> Verfügbar <b>${num(free)}</b></span>
+          <span><i class="av-res"></i> Reserviert <b>${num(res)}</b></span>
+          <span><i class="av-sold"></i> Verkauft <b>${num(sold)}</b></span>
           <span style="border-top:1px solid var(--border);padding-top:5px">Σ gesamt <b>${num(tot)}</b></span>
         </div>
       </div>
@@ -2482,18 +2484,18 @@ function renderDashboard(){
   const maxT = types.length ? types[0][1].total : 0;
   const bars = types.map(([t,o])=>{
     const wRel = maxT>0 ? (o.total/maxT*100) : 0;
-    const fFree = o.total>0 ? (o.free/o.total*100) : 0, fBound = o.total>0 ? (o.bound/o.total*100) : 0;
+    const fFree = o.total>0 ? (o.free/o.total*100) : 0, fRes = o.total>0 ? (o.res/o.total*100) : 0, fSold = o.total>0 ? (o.sold/o.total*100) : 0;
     return `<div class="tb-row">
       <div class="tb-label" title="${t}">${t}</div>
-      <div class="tb-track"><div class="tb-fill" style="width:${wRel}%" title="${t}: ${fmtM2(o.total)} (frei ${fmtM2(o.free)} · gebunden ${fmtM2(o.bound)})">
-        <span class="tb-free" style="width:${fFree}%"></span><span class="tb-bound" style="width:${fBound}%"></span>
+      <div class="tb-track"><div class="tb-fill" style="width:${wRel}%" title="${t}: ${fmtM2(o.total)} (Verfügbar ${fmtM2(o.free)} · Reserviert ${fmtM2(o.res)} · Verkauft ${fmtM2(o.sold)})">
+        <span class="tb-free" style="width:${fFree}%"></span><span class="tb-res" style="width:${fRes}%"></span><span class="tb-sold" style="width:${fSold}%"></span>
       </div></div>
       <div class="tb-val">${fmtM2(o.total)}</div>
     </div>`;
   }).join('');
   const typeCard = `
     <div class="dash-card">
-      <div class="dash-h">m² je Glastyp <span style="font-weight:400;color:var(--subtext);font-size:.72rem">grün = frei · amber = gebunden</span></div>
+      <div class="dash-h">m² je Glastyp <span style="font-weight:400;color:var(--subtext);font-size:.72rem">grün = Verfügbar · amber = Reserviert · rot = Verkauft</span></div>
       <div class="typebars">${bars || '<div class="dash-empty">Keine Maße erfasst.</div>'}</div>
     </div>`;
   host.innerHTML = `<div class="dash-kpis">${kpis}</div><div class="dash-grid">${donut}${typeCard}</div>`;
@@ -3073,8 +3075,19 @@ function optionsAreEquivalent(a, b){
 
 // Berechnet den Bestand-Snapshot nach Anwendung aller Picks vor Position `uptoIdx`.
 function computeAvailableAt(uptoIdx){
-  // Start: availableQty (= qty - bereits reservierte/verkaufte Stücke aus Projekten)
-  const stock = db.map(e => Object.assign({}, e, {_remaining: availableQty(e)}));
+  // Start: availableQty (= qty - bereits reservierte/verkaufte Stücke aus Projekten).
+  // Re-Match-Modus (matchEditCredit gesetzt): die Reservierungen DES BEARBEITETEN Projekts
+  // werden auf den Klonen virtuell zurückgegeben (reservedQty reduziert + Status neu abgeleitet),
+  // damit dessen eigener Bestand wieder matchbar ist — der echte db bleibt unverändert.
+  const stock = db.map(e => {
+    const clone = Object.assign({}, e);
+    if(matchEditCredit){
+      const c = matchEditCredit.get(e.id) || 0;
+      if(c > 0){ clone.reservedQty = Math.max(0, (Number(e.reservedQty)||0) - c); recomputeStatus(clone); }
+    }
+    clone._remaining = availableQty(clone);
+    return clone;
+  });
   const stockById = new Map(stock.map(s => [s.id, s]));
   for(let i = 0; i < uptoIdx; i++){
     const pick = matchPicks[i];
@@ -3136,15 +3149,19 @@ let matchResults = [];   // Cache der matchOne-Ergebnisse (für Transparenz-Anze
 let matchOptions = [];   // Pro Position: Array der berechneten Vorschläge (1-3)
 let matchPicks   = [];   // Pro Position: gewählter Vorschlag (oder null)
 let matchSourceFile = null; // File-Objekt der zuletzt importierten Anfragen-Datei (RAM-only)
+let matchEditProjectId = null; // Re-Match: ID des Projekts, das gerade neu abgeglichen wird (null = normaler Upload-Match)
+let matchEditCredit = null;    // Re-Match: Map stockId -> von DIESEM Projekt reservierte Stück; wird in computeAvailableAt virtuell zurückgegeben
 
 function matchReset(){
   matchReqs = []; matchOpenIdx = null; matchResults = []; matchOptions = []; matchPicks = [];
   matchSourceFile = null;
+  matchEditProjectId = null; matchEditCredit = null;
   g0('m-file').value = '';
   g0('m-results-wrap').style.display = 'none';
   g0('m-tbody').innerHTML = '';
   g0('m-cnt').textContent = '0';
   const planBox = document.getElementById('m-plan'); if(planBox) planBox.innerHTML = '';
+  const fileStatus = document.getElementById('m-file-status'); if(fileStatus){ fileStatus.style.display = 'none'; fileStatus.innerHTML = ''; }
 }
 
 function matchHandleFile(ev){
@@ -3155,6 +3172,9 @@ function matchHandleFile(ev){
 }
 
 function matchLoadFile(file){
+  // Ein neuer Datei-Upload verlässt einen evtl. laufenden Re-Match-Modus (db wurde bei der
+  // Planung nicht verändert → gefahrlos).
+  if(matchEditProjectId){ matchEditProjectId = null; matchEditCredit = null; }
   const reader = new FileReader();
   reader.onload = (e)=>{
     try{
@@ -3189,6 +3209,11 @@ function matchLoadFile(file){
       // Auto-Vorauswahl: pro Position Vorschlag 1 anwenden, Bestand fließend dekrementieren.
       recomputeFromIdx(0);
       renderMatchTable();
+      const fileStatus = g0('m-file-status');
+      if(fileStatus){
+        fileStatus.style.display = 'flex';
+        fileStatus.innerHTML = `<span>✅</span><span>Geladen: <strong>${escapeHtml(file.name)}</strong> · ${reqs.length} Anfrage${reqs.length===1?'':'n'}, ${detected.length} Spalten erkannt</span>`;
+      }
       toast(`${reqs.length} Anfrage${reqs.length===1?'':'n'} geladen (Spalten erkannt: ${detected.length})`,'ok');
     }catch(err){
       console.error(err); toast('Fehler beim Lesen der Datei','err');
@@ -3248,7 +3273,7 @@ function reqSummary(r){
 function renderMatchTable(){
   g0('m-cnt').textContent = matchReqs.length;
   const planBox = g0('m-plan');
-  if(planBox) planBox.innerHTML = renderSummary();
+  if(planBox) planBox.innerHTML = rematchBanner() + renderSummary();
   const rows = matchReqs.map((r,idx)=>{
     const pick = matchPicks[idx];
     const demanded = Number(r.qty)||0;
@@ -3315,7 +3340,8 @@ function renderSummary(){
   const cls = complete ? 'recommend' : 'recommend partial';
   const icon = complete ? '🎯' : '⚠';
   const title = complete ? 'Auswahl — alle Positionen gedeckt' : 'Auswahl — Teilabdeckung';
-  const createBtn = `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openProjectCreateModal()">📁 Projekt anlegen</button>`;
+  // Im Re-Match-Modus sitzen „Aktualisieren"/„Abbrechen" im Banner (rematchBanner) — dann kein „Anlegen".
+  const createBtn = matchEditProjectId ? '' : `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openProjectCreateModal()">📁 Projekt anlegen</button>`;
   const stockList = Array.from(stockAgg.values()).map(g => {
     const p = g.first;
     const targetId = p.virtual ? p.parentId : p.stockId;
@@ -3444,6 +3470,106 @@ async function submitProjectCreate(){
   }finally{
     btn.disabled = false; btn.textContent = 'Projekt anlegen →';
   }
+}
+
+// ════════ Re-Match: bestehendes Projekt gegen aktuellen Bestand neu abgleichen ════════
+// Lädt die gespeicherte Anfrage des Projekts ins Matching und rechnet gegen den HEUTIGEN
+// Bestand neu (inkl. neu erfasster Gläser). Die Reservierungen DES PROJEKTS werden während
+// der Planung nur virtuell zurückgegeben (computeAvailableAt + matchEditCredit) — der echte
+// Bestand ändert sich erst beim Klick auf „Projekt aktualisieren". Abbrechen ist gefahrlos.
+function rematchProject(id){
+  const p = projects.find(x => x.id === id);
+  if(!p || p.status !== 'aktiv') return;
+  if(!(p.requests && p.requests.length)){ toast('Dieses Projekt hat keine gespeicherte Anfrage zum Abgleichen.','err'); return; }
+  if(!confirm(`Projekt „${p.name}" mit dem aktuellen Bestand neu abgleichen?\n\nDie gespeicherte Anfrage wird ins Matching geladen und gegen den heutigen Bestand (inkl. neu erfasster Gläser) neu berechnet.\n\nDie Reservierungen dieses Projekts ändern sich dabei NICHT — erst wenn du am Ende „Projekt aktualisieren" klickst. „Abbrechen" lässt alles unverändert.`)) return;
+  // Credit aufbauen: wie viele Stück hat DIESES Projekt je Bestand-Posten reserviert?
+  matchEditCredit = new Map();
+  (p.allocations||[]).forEach(a => {
+    const tid = a.virtual ? a.parentId : a.stockId;
+    const lc = a.layerCount || 1;
+    const sheets = a.virtual ? Math.ceil((a.sheetsTaken||0)/lc) : (a.sheetsTaken||0);
+    matchEditCredit.set(tid, (matchEditCredit.get(tid)||0) + sheets);
+  });
+  matchEditProjectId = id;
+  matchSourceFile = null;                                  // Re-Match nutzt den gespeicherten Snapshot
+  matchReqs = (p.requests||[]).map(r => Object.assign({}, r));
+  matchResults = matchReqs.map(r => matchOne(r));
+  matchOptions = new Array(matchReqs.length).fill(null);
+  matchPicks = new Array(matchReqs.length).fill(null);
+  matchOpenIdx = null;
+  recomputeFromIdx(0);                                     // nutzt computeAvailableAt mit Credit → eigener + neuer Bestand
+  const st = g0('m-file-status'); if(st){ st.style.display='none'; st.innerHTML=''; }
+  g0('m-results-wrap').style.display = 'block';
+  nav('match');
+  renderMatchTable();
+  toast('Anfrage geladen — gegen aktuellen Bestand neu berechnet.','ok');
+}
+
+// Banner im Matching-Plan: zeigt den Re-Match-Modus + Aktualisieren/Abbrechen.
+function rematchBanner(){
+  if(!matchEditProjectId) return '';
+  const p = projects.find(x => x.id === matchEditProjectId);
+  const nm = p ? escapeHtml(p.name||'(ohne Name)') : escapeHtml(matchEditProjectId);
+  return `<div style="margin-top:14px;padding:12px 16px;background:#F4F2FF;border:1px solid #D9D2FF;border-radius:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:1.15rem">🔄</span>
+    <div style="flex:1;min-width:220px">
+      <strong>Neu-Abgleich für Projekt „${nm}"</strong>
+      <div style="color:var(--subtext);font-size:.82rem;margin-top:2px">Geprüft gegen den aktuellen Bestand. Die Reservierungen ändern sich erst beim Klick auf „Projekt aktualisieren".</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="updateRematchedProject()">💾 Projekt aktualisieren</button>
+    <button class="btn btn-ghost btn-sm" onclick="cancelRematch()">✕ Abbrechen</button>
+  </div>`;
+}
+
+// Übernimmt den neu berechneten Plan ins Projekt (atomar: alte Reservierungen lösen, neue buchen).
+function updateRematchedProject(){
+  const p = projects.find(x => x.id === matchEditProjectId);
+  if(!p){ toast('Projekt nicht gefunden.','err'); clearRematch(); nav('projects'); return; }
+  const allocations = [];
+  matchPicks.forEach((pick, reqIdx) => {
+    if(!pick) return;
+    const req = matchReqs[reqIdx];
+    const reqW = Number(req.w)||0, reqH = Number(req.h)||0;
+    pick.posts.forEach(pp => {
+      allocations.push({
+        reqIdx, stockId: pp.stockId, virtual: !!pp.virtual, parentId: pp.parentId || null,
+        layerCount: pp.layerCount || 1, stockW: pp.stockW, stockH: pp.stockH,
+        reqW, reqH, rotated: !!pp.rotated, sheetsTaken: pp.sheetsTaken, cuts: pp.cuts,
+        delivered: pp.delivered, wastePct: pp.wastePct||0, type: pp.type, projLabel: pp.projLabel || ''
+      });
+    });
+  });
+  const before = (p.allocations||[]).reduce((s,a)=>s+(Number(a.delivered)||0),0);
+  const after  = allocations.reduce((s,a)=>s+(Number(a.delivered)||0),0);
+  if(!confirm(`Projekt „${p.name}" aktualisieren?\n\nGedeckte Scheiben vorher: ${before}\nGedeckte Scheiben nachher: ${after}\n\nDie bisherigen Reservierungen werden freigegeben und der neue Plan wird reserviert.`)) return;
+  (p.allocations||[]).forEach(a => bookAllocReserve(a, -1));   // alte Reservierungen lösen
+  p.allocations = allocations;
+  allocations.forEach(a => bookAllocReserve(a, +1));           // neuen Plan reservieren
+  p.updatedAt = now();
+  persist();
+  const pid = p.id;
+  clearRematch();
+  openProject(pid);
+  toast(`Projekt aktualisiert — ${after} Scheiben gedeckt (vorher ${before}).`,'ok');
+}
+
+// Re-Match abbrechen — am Bestand wurde nichts verändert.
+function cancelRematch(){
+  const pid = matchEditProjectId;
+  clearRematch();
+  if(pid) openProject(pid); else nav('projects');
+  toast('Neu-Abgleich abgebrochen — nichts geändert.','ok');
+}
+
+// Setzt allen Re-Match- und Matching-State zurück.
+function clearRematch(){
+  matchEditProjectId = null; matchEditCredit = null;
+  matchReqs = []; matchResults = []; matchOptions = []; matchPicks = []; matchOpenIdx = null;
+  const st = g0('m-file-status'); if(st){ st.style.display='none'; st.innerHTML=''; }
+  const wrap = g0('m-results-wrap'); if(wrap) wrap.style.display='none';
+  const tbody = g0('m-tbody'); if(tbody) tbody.innerHTML='';
+  const cnt = g0('m-cnt'); if(cnt) cnt.textContent='0';
+  const planBox = document.getElementById('m-plan'); if(planBox) planBox.innerHTML='';
 }
 
 // Lädt die Original-Anfrage-Datei (xlsx/csv) als Drive-File hoch — gleicher Ordner wie Foto/JSON.
