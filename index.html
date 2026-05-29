@@ -2435,10 +2435,16 @@ function crit_color(req, e){
   return String(e.color||'').trim() === req.color;
 }
 function crit_status(req, e){
-  // Hartes Kriterium ohne Spalte: nur Posten, die noch verfügbare Stücke haben.
-  // (Status 'Reserviert' / 'Verkauft' impliziert availableQty=0, aber wir prüfen direkt
-  // die Stückzahl, damit auch teilreservierte Posten mit Restbestand mitspielen.)
-  return e.status !== 'Verkauft' && availableQty(e) > 0;
+  // Hartes Kriterium ohne Spalte: nur Posten mit Status 'Verfügbar' UND freiem Bestand.
+  // Beide Bedingungen sind nötig, weil ein Posten auf zwei Wegen "weg" sein kann:
+  //   (a) MANUELL: User setzt den Status-Dropdown in der Erfassung auf 'Reserviert'/'Verkauft'
+  //       (z.B. Vormerkung ohne Projekt). Dabei bleiben reservedQty/soldQty = 0, also wäre
+  //       availableQty noch > 0 — der Status-Check fängt das ab.
+  //   (b) PROJEKT-BUCHHALTUNG: reservedQty/soldQty werden hochgezählt. Bei VOLLER Reservierung
+  //       setzt recomputeStatus() den Status ohnehin auf 'Reserviert'; bei TEILreservierung
+  //       bleibt der Status 'Verfügbar' und availableQty(e) > 0 lässt den Restbestand korrekt
+  //       weiter mitspielen.
+  return e.status === 'Verfügbar' && availableQty(e) > 0;
 }
 
 const MATCH_CRITERIA = [
