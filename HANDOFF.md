@@ -280,16 +280,18 @@ Drive-Datei:     'refloat-data.json'
 
 Vom User bereits live bestätigt: Projekt-Anlegen aus Matching funktioniert sauber.
 
-Noch praxis-zu-testen mit dem Team:
-- **Reservierungs-Buchhaltung im Mehrpersonen-Betrieb**: Person A legt Projekt an → Person B sieht reduzierte Verfügbarkeit erst nach Reload (Schwachstelle 1). Bei zwei parallel angelegten Projekten auf demselben Posten → Last-write-wins (Schwachstelle 2).
-- **Lifecycle**: Projekt abschließen → Übersicht zeigt für betroffene Posten Status `Verkauft`, wenn alle Stücke weg sind. Stornieren → Reservierung muss komplett zurückfließen. Wenn ein Posten vorher manuell auf „Reserviert" gesetzt war, wird er nach Storno auf „Verfügbar" zurückgesetzt (Schwachstelle 5).
-- **Schneidskizze-Geometrie (Phase 6.1)**: bei Anfragen mit Maßen weit unter Bestandsmaß zeigt die Skizze ein Raster, Cuts kleben oben-links, Verschnitt liegt nur rechts und unten. Bei mehreren identischen Schnittplänen in derselben Position → eine Skizze mit „× N"-Badge.
-- **PDF-Export (Phase 6.1)**: Druck erzeugt jetzt Seite 1 = Text+Anfrage-Tabelle, Seiten 2..N = je eine Skizze. KEIN dreifaches Rendering mehr (war `position:fixed`-Bug, Logik-Entscheidung 16). Beim ersten Live-Test Skalierung der großen Skizzen prüfen (640×480-Variante, sollte ~17 cm breit drucken).
-- **JSON-Migration**: Bestehende Drive-Datei wird beim ersten Sync ins neue `{glass, projects}`-Format überführt — beim ersten Update einmal manuell prüfen, dass kein Eintrag fehlt.
-- **Drive-Upload der Original-Datei**: `uploadSourceFileToDrive` läuft im Live-Test (auf localhost nicht prüfbar). Sollte funktionieren da gleiche Multipart-Mechanik wie `uploadPhotoToDrive`.
-- **Phase 7 (lokal verifiziert):** Verfügbarkeits-Balken in Liste/Karten/Detail, manuell auf „Reserviert"/„Verkauft" gesetzte Posten erscheinen korrekt gebunden (nicht mehr „frei"), Dashboard-KPIs/Ring/m²-Balken und der Stück↔m²-Umschalter rechnen plausibel. Im Live-/Team-Betrieb noch im Blick behalten: dass die m²-Summen mit der realen Erfassung übereinstimmen und das Dashboard auf Mobil (1-spaltig ab < 760 px) gut aussieht.
+**Aktueller Stand:** Erste **Mehrbenutzer-Beta-Tests mit dem Team** starten. App-Passwort = **`refloat-beta`**. Onboarding eines neuen Team-Mitglieds (einmalig, durch den Owner): (1) Google-Konto des Kollegen als **Testnutzer** im Google-Cloud-Projekt freischalten (APIs & Dienste → OAuth-Zustimmungsbildschirm / „Zielgruppe" → Testnutzer), (2) Drive-Datei/-Ordner mit ihm als **Bearbeiter** teilen. Der Kollege: App öffnen → Passwort → „🔌 Drive verbinden" → **„Bestehende Datenbank wählen"** (Picker) — NICHT „Neue erstellen". Fotos werden nur sichtbar, wenn der **enthaltende Ordner** geteilt ist (nicht nur die JSON).
 
-Danach: **Schwachstelle 1 (Auto-Refresh)** ist der nächste sinnvolle Schritt, sobald mehr als eine Person regelmäßig Projekte anlegt — sonst sehen die anderen reduzierte Verfügbarkeit erst nach F5. Schwachstellen 3 + 4 + 5 + 6 sind Edge-Cases, erst bei konkretem Trigger fixen.
+Noch live/im-Team zu bestätigen:
+- **Auto-Refresh (Phase 7.2) — NUR LOKAL VERIFIZIERT, live noch offen:** Mit 2 Konten prüfen: A ändert etwas → B (passive Ansicht) sieht es in ~30 s automatisch (Toast „🔄 Aktualisiert…"); im Formular/Modal/Matching erscheint stattdessen die Pille „🔄 jetzt laden"; Hintergrund-Tab pausiert, beim Zurückkehren Sofort-Check. (Auf localhost nicht testbar — Drive nur auf github.io.)
+- **Reservierungs-Buchhaltung im Mehrpersonen-Betrieb:** A legt Projekt an → B sieht die reduzierte Verfügbarkeit jetzt automatisch (dank 7.2). Zwei parallel angelegte Projekte auf demselben Posten → weiterhin Last-write-wins (Schwachstelle 2, offen).
+- **Projekt-Lifecycle (Phase 7.1):** Abschließen → „Verkauft" wenn alle Stücke weg; „↩ Abschluss rückgängig" bucht Verkauft→Reserviert; „🗄 Archivieren" + Filter „Archiviert"; „🔧 Bestand abgleichen" repariert verwaiste Buchungen (z. B. den FG-2026-001-P1-Fall).
+- **Matching-Farbe (Phase 7.3):** Anfrage ohne Farbe matcht nur klare Bestandsgläser (Anfrage-Tabelle zeigt „Klar").
+- **Bestand-Visualisierung (Phase 7):** m²-Summen im Dashboard gegen reale Erfassung prüfen; Dashboard auf Mobil (1-spaltig < 760 px).
+- **Schneidskizze-Geometrie & PDF-Export (Phase 6.1):** Skizze als Raster (Cuts oben-links, Verschnitt rechts/unten), „× N"-Badge bei identischen Plänen; PDF = Seite 1 Text+Tabelle, Seiten 2..N je eine Skizze (kein dreifaches Rendering); Skalierung der großen Skizzen prüfen (~17 cm breit).
+- **JSON-Migration / Drive-Upload der Original-Datei:** bestehende Drive-Datei wird beim ersten Sync ins `{glass, projects}`-Format überführt (kein Eintrag darf fehlen); `uploadSourceFileToDrive` läuft nur live.
+
+Danach: **Schwachstelle 2 (Konflikt-Warnung beim Speichern)** ist der nächste sinnvolle Entwicklungsschritt — die Grundlage (`driveKnownModifiedTime`) liegt seit 7.2 vor: vor `driveSave()` die Server-`modifiedTime` gegen den bekannten Stand prüfen und bei neuerem Stand warnen statt überschreiben. Schwachstellen 3 + 4 + 5 + 6 sind Edge-Cases, erst bei konkretem Trigger fixen.
 
 ## GitHub
 - Öffentliches Repository: `urbanmatter/refloat-inventory`
