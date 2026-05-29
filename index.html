@@ -2990,26 +2990,28 @@ function expandStockWithRemaining(req, stockList){
   return out;
 }
 
-// Erzeugt bis zu 3 Vorschläge, sortiert nach TATSÄCHLICHEM Combo-Verschnitt.
-// Vorgehen:
-//   1. Bis zu 5 Greedy-Kandidaten erzeugen (Startpunkt = matches[0..4]). Mehr Startpunkte
-//      machen die Auswahl robust gegen den Effekt, dass der niedrigste Pro-Stück-Verschnitt
-//      nicht zwingend den niedrigsten Combo-Verschnitt liefert (etwa wenn das letzte
-//      Bestand-Stück nur zur Hälfte genutzt wird).
-//   2. Duplikate aussortieren (gleiche Posts + sheetsTaken).
-//   3. Sortieren: voll deckend zuerst, dann höchste Deckung, dann niedrigster Combo-Verschnitt.
-//   4. Top 3 zurückgeben — Vorschlag 1 ist damit garantiert der beste nach diesen Kriterien.
+// Erzeugt bis zu 3 Vorschläge, sortiert nach TATSÄCHLICHEM (Combo-)Verschnitt.
+// Kandidaten kommen aus MEHREREN Reihenfolgen, damit Vorschlag 1 verlässlich der mit dem
+// geringsten echten Verschnitt ist:
+//   (a) Pro-Stück-Verschnitt-Reihenfolge (5 Startpunkte) — gut, wenn Scheiben voll genutzt werden.
+//   (b) Kleinste Bestandsfläche zuerst (mehrere Startpunkte) — minimiert den Combo-Verschnitt bei
+//       kleinen Mengen/Restmengen: eine große Platte für wenige Stücke zu opfern ist teuer.
+// Danach: Duplikate raus, sortieren (voll deckend → höchste Deckung → geringster Combo-Verschnitt),
+// Top 3. Damit wird z.B. für Menge 1 die KLEINSTE passende Scheibe gewählt statt der am dichtesten
+// kachelnden (großen) Platte.
 function buildOptions(req, matches){
   const targetQty = Number(req.qty) || 0;
   if(matches.length === 0 || targetQty <= 0) return [];
   const candidates = [];
+  const add = (opt) => { if(opt && opt.posts.length > 0 && !candidates.some(o => optionsAreEquivalent(o, opt))) candidates.push(opt); };
+  // (a) Pro-Stück-Verschnitt-Reihenfolge (matches ist bereits so sortiert), 5 Startpunkte.
   const startCount = Math.min(5, matches.length);
-  for(let start = 0; start < startCount; start++){
-    const opt = greedyFromStart(req, matches, start, targetQty);
-    if(opt && opt.posts.length > 0){
-      const dup = candidates.some(o => optionsAreEquivalent(o, opt));
-      if(!dup) candidates.push(opt);
-    }
+  for(let s = 0; s < startCount; s++) add(greedyFromStart(req, matches, s, targetQty));
+  // (b) Kleinste Bestandsfläche zuerst (+ ein paar Startpunkte für gemischte Mengen).
+  const byArea = matches.slice().sort((a, b) => ((Number(a.w)||0)*(Number(a.h)||0)) - ((Number(b.w)||0)*(Number(b.h)||0)));
+  const areaStarts = Math.min(3, byArea.length);
+  for(let s = 0; s < areaStarts; s++){
+    add(greedyFromOrder(req, byArea.slice(s).concat(byArea.slice(0, s)), targetQty));
   }
   candidates.sort((a, b) => {
     if(a.complete !== b.complete) return a.complete ? -1 : 1;
@@ -3019,14 +3021,19 @@ function buildOptions(req, matches){
   return candidates.slice(0, 3);
 }
 
+// Rotations-Wrapper: greedy ab matches[startIdx], dann der Rest in matches-Reihenfolge.
 function greedyFromStart(req, matches, startIdx, targetQty){
-  let remaining = targetQty;
-  const posts = [];
-  let usedArea = 0, totalArea = 0;
-  // Reihenfolge: matches[startIdx], dann matches[0..startIdx-1, startIdx+1..] in Reihenfolge
   const order = [];
   for(let i = startIdx; i < matches.length; i++) order.push(matches[i]);
   for(let i = 0; i < startIdx; i++) order.push(matches[i]);
+  return greedyFromOrder(req, order, targetQty);
+}
+
+// Greedy durch eine VORGEGEBENE Reihenfolge von Treffern; nimmt Scheiben, bis die Menge gedeckt ist.
+function greedyFromOrder(req, order, targetQty){
+  let remaining = targetQty;
+  const posts = [];
+  let usedArea = 0, totalArea = 0;
   for(const m of order){
     if(remaining <= 0) break;
     const cuts = m._cuts || 1;
@@ -3140,6 +3147,26 @@ function selectOption(idx, optionIdx){
 function resetPick(idx){
   recomputeFromIdx(idx);
   renderMatchTable();
+}
+
+// User wählt aus der Referenzliste einen KONKRETEN Bestand-Posten für Position idx.
+// Baut eine Option, die mit genau diesem Posten beginnt (Rest greedy aufgefüllt), und setzt sie
+// als Pick. matchOptions[idx] (die Auto-Vorschläge) bleibt unverändert — der manuelle Pick wird in
+// renderMatchDetail als zusätzliche „Manuell gewählt"-Karte angezeigt. „Auswahl zurücksetzen" stellt
+// die Auto-Vorauswahl wieder her.
+function selectStock(idx, postId){
+  const req = matchReqs[idx];
+  const stock = computeAvailableAt(idx);
+  const matches = findMatchesAgainst(req, stock);
+  const chosen = matches.find(m => m.id === postId);
+  if(!chosen){ toast('Dieser Posten ist im aktuellen Plan nicht mehr verfügbar (evtl. von einer früheren Position belegt).','err'); return; }
+  const order = [chosen].concat(matches.filter(m => m.id !== postId));
+  const opt = greedyFromOrder(req, order, Number(req.qty)||0);
+  if(!opt || opt.posts.length === 0){ toast('Aus diesem Posten lässt sich für diese Anfrage nichts zuschneiden.','err'); return; }
+  matchPicks[idx] = opt;
+  recomputeFromIdx(idx + 1);   // nachfolgende Positionen mit dem dann verbleibenden Bestand neu rechnen
+  renderMatchTable();
+  toast('Bestand-Posten als Auswahl gesetzt.','ok');
 }
 
 // ─── State + UI ───
@@ -3608,11 +3635,11 @@ function renderMatchDetail(idx){
   // 1. Vorschlags-Cards: bis zu 3 Optionen, die aktive ist hervorgehoben.
   if(opts && opts.length > 0){
     const targetQty = Number(r.qty)||0;
-    html += `<div style="margin-bottom:10px;font-size:.85rem;color:var(--subtext)">Vorschläge (sortiert nach geringstem Verschnitt). Klicke einen an — der Bestand wird für nachfolgende Positionen aktualisiert. <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="event.stopPropagation();resetPick(${idx})">↻ Auswahl zurücksetzen</button></div>`;
+    html += `<div style="margin-bottom:10px;font-size:.85rem;color:var(--subtext)">Vorschläge (sortiert nach geringstem <em>echten</em> Verschnitt für die benötigte Menge). Klicke einen an — der Bestand wird für nachfolgende Positionen aktualisiert. Du kannst unten in der Liste auch einen konkreten Posten „Wählen". <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="event.stopPropagation();resetPick(${idx})">↻ Auswahl zurücksetzen</button></div>`;
     html += `<div class="option-list">`;
-    opts.forEach((opt, oi) => {
+    const pickIsAuto = currentPick && opts.some(o => optionsAreEquivalent(o, currentPick));
+    const renderOptionCard = (opt, tag, manual) => {
       const isActive = currentPick && optionsAreEquivalent(currentPick, opt);
-      const tag = (oi === 0) ? 'Vorschlag 1 — geringster Verschnitt' : (oi === 1 ? 'Vorschlag 2' : 'Vorschlag 3');
       const covCls = opt.complete ? 'ok' : (opt.covered > 0 ? 'partial' : 'zero');
       const covTxt = opt.complete ? '✓ '+opt.covered+'/'+targetQty : opt.covered+'/'+targetQty;
       const postsHtml = opt.posts.map(p => {
@@ -3621,14 +3648,22 @@ function renderMatchDetail(idx){
         const rotInfo = p.rotated ? ' · gedreht' : '';
         return `<div class="option-post"><strong>${p.sheetsTaken}× </strong>aus <span class="pick-id" onclick="event.stopPropagation();closeMatchAndOpen('${pid}')" style="cursor:pointer">${escapeHtml(p.stockId)}</span> (${p.stockW}×${p.stockH} mm) → <strong>${p.delivered}</strong> Scheibe${p.delivered===1?'':'n'}<span style="color:var(--subtext);font-size:.78rem">${cutInfo}${rotInfo}</span></div>`;
       }).join('');
-      html += `<div class="option-card ${isActive?'active':''}" onclick="event.stopPropagation();selectOption(${idx},${oi})">
+      const oi = opts.indexOf(opt);
+      const clickAttr = manual ? '' : ` onclick="event.stopPropagation();selectOption(${idx},${oi})"`;
+      return `<div class="option-card ${isActive?'active':''}"${clickAttr}${manual?' style="cursor:default"':''}>
         <div class="option-head">
           <span class="option-tag">${isActive?'✓ ':''}${tag}</span>
           <span class="hit-count ${covCls}">${covTxt}</span>
         </div>
-        <div class="option-waste">⌀ Verschnitt <strong>${(opt.comboWastePct*100).toFixed(0)}%</strong></div>
+        <div class="option-waste" title="Tatsächlicher Verschnitt für die benötigte Menge — eine ganze Bestandsscheibe wird ggf. für wenige Zuschnitte verbraucht.">⌀ Verschnitt <strong>${(opt.comboWastePct*100).toFixed(0)}%</strong></div>
         <div class="option-body">${postsHtml}</div>
       </div>`;
+    };
+    // Manuell aus der Liste gewählter Posten, der nicht unter den Auto-Vorschlägen ist → eigene Karte vorne.
+    if(currentPick && !pickIsAuto){ html += renderOptionCard(currentPick, 'Manuell gewählt', true); }
+    opts.forEach((opt, oi) => {
+      const tag = (oi === 0) ? 'Vorschlag 1 — geringster Verschnitt' : (oi === 1 ? 'Vorschlag 2' : 'Vorschlag 3');
+      html += renderOptionCard(opt, tag, false);
     });
     html += `</div>`;
   } else if(opts && opts.length === 0){
@@ -3660,7 +3695,7 @@ function renderMatchDetail(idx){
       <thead><tr>
         <th>ID</th><th>Projekt</th><th>Typ</th><th>Maße (mm)</th><th>R-Strategie</th>
         <th title="Maximal lieferbare Anfrage-Scheiben aus diesem Posten (vor globaler Plan-Aufteilung)">Lieferbar</th>
-        <th title="Restfläche pro Bestandsscheibe nach Zuschnitt">Verschnitt</th>
+        <th title="Verschnitt pro Bestandsscheibe bei VOLLnutzung (alle Zuschnitte entnommen). Die Vorschlags-Karten oben zeigen dagegen den ECHTEN Verschnitt für die tatsächlich benötigte Menge.">Verschnitt/Stück</th>
         <th>Preis</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>
@@ -3683,7 +3718,7 @@ function renderMatchDetail(idx){
           <td>${wasteCell}</td>
           <td style="white-space:nowrap">${fmt(e.price)}</td>
           <td>${badge(e.status)}</td>
-          <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail('${targetId}')">Details</button></td>
+          <td style="white-space:nowrap"><button class="btn btn-soft btn-sm" data-pid="${escapeHtml(e.id)}" onclick="event.stopPropagation();selectStock(${idx}, this.dataset.pid)">Wählen</button> <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail('${targetId}')">Details</button></td>
         </tr>`;
         }).join('')}
       </tbody>
