@@ -787,6 +787,10 @@ checkAuth();
 const DRIVE_API_KEY = 'AIzaSyDL1ZSe4DQcTlxe-4LCZGwcTSck6C5i3VQ';
 // ─────────────────────────────────────────────────────────────────
 const OAUTH_CLIENT_ID = '383046788151-99h586mb9tmdup6aqsits1i3rgge4ena.apps.googleusercontent.com';
+// App-ID = Cloud-Projektnummer (Präfix der OAuth-Client-ID). Pflicht für den Picker beim
+// drive.file-Scope: nur so wird eine VOM NUTZER GEWÄHLTE (nicht von der App erstellte) Datei
+// für die App freigegeben. Ohne setAppId(...) scheitert driveLoad() nach der Picker-Auswahl.
+const DRIVE_APP_ID = OAUTH_CLIENT_ID.split('-')[0];
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'refloat-data.json';
 const DRIVE_FILE_KEY = 'refloat_drive_file_id';
@@ -963,6 +967,7 @@ function drivePickExisting(){
     .addView(view)
     .setOAuthToken(driveAccessToken)
     .setDeveloperKey(DRIVE_API_KEY)
+    .setAppId(DRIVE_APP_ID)        // gibt die gewählte Datei für die App frei (drive.file-Scope)
     .setCallback(pickerCallback)
     .setLocale('de')
     .build();
