@@ -2704,7 +2704,9 @@ function normalizeRequest(row, cols, rowIdx){
     h:     num(get('h')),
     coating: isEmpty(coatRaw)  ? null : (MATCH_COAT_ALIAS[normValue(coatRaw)]  || String(coatRaw).trim()),
     qty:   num(get('qty')),
-    color: isEmpty(colorRaw) ? null : (MATCH_COLOR_ALIAS[normValue(colorRaw)] || String(colorRaw).trim())
+    // Leere Farbe = Annahme "Klar": es werden nur klare Bestandsgläser gematcht.
+    // (Für eine andere Farbe muss sie explizit in der Anfrage stehen.)
+    color: isEmpty(colorRaw) ? 'Klar' : (MATCH_COLOR_ALIAS[normValue(colorRaw)] || String(colorRaw).trim())
   };
 }
 
@@ -3590,7 +3592,7 @@ function downloadMatchTemplate(){
     ['Höhe (mm)','Mindesthöhe. Aus einer Bestandsscheibe können mehrere Anfrage-Scheiben geschnitten werden, wenn die Maße passen.','z.B. 800'],
     ['Beschichtung','Wird exakt verglichen.','Keine · Wärmeschutz · Sonnenschutz · Sonstiges'],
     ['Stückzahl','Anzahl benötigter Anfrage-Scheiben. Mehrfach-Zuschnitt und Posten-Kombination werden automatisch berücksichtigt.','z.B. 50'],
-    ['Farbe','Optional. Wird exakt verglichen.','Klar · Grün · Grau · Bronze · Blau · Sonstiges'],
+    ['Farbe','Wird exakt verglichen. Leer lassen = "Klar" wird angenommen (nur klare Bestandsgläser matchen).','Klar · Grün · Grau · Bronze · Blau · Sonstiges'],
     [''],
     ['Allgemein:'],
     ['• Leere Felder bedeuten „egal" und werden beim Matching übersprungen.'],
