@@ -269,6 +269,13 @@ tr:last-child td{border-bottom:none}
 /* ── Modal ── */
 .overlay{display:none;position:fixed;inset:0;background:rgba(26,26,46,.45);z-index:200;overflow-y:auto;padding:20px;backdrop-filter:blur(2px)}
 .overlay.open{display:flex;align-items:flex-start;justify-content:center}
+/* Auto-Refresh-Hinweis (Schwachstelle 1) */
+#update-banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9000;display:none;
+  background:var(--primary);color:#fff;padding:10px 20px;border-radius:999px;font-size:.88rem;font-weight:600;
+  box-shadow:0 8px 28px rgba(91,75,225,.42);cursor:pointer;border:0;animation:ub-in .25s ease}
+#update-banner.show{display:block}
+#update-banner:hover{background:var(--accent)}
+@keyframes ub-in{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
 .modal{background:var(--card);border-radius:var(--rc);box-shadow:var(--shadow-lg);width:100%;max-width:760px;margin:auto;overflow:hidden}
 .modal-hd{padding:22px 24px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
 .modal-hd-title{font-size:1.2rem;font-weight:600;letter-spacing:-.01em}
@@ -740,6 +747,9 @@ tr:last-child td{border-bottom:none}
 </div>
 
 <div class="lb" id="lb" onclick="closeLB()"><button class="lb-close">✕</button><img id="lbimg" src="" alt=""></div>
+
+<!-- Auto-Refresh-Hinweis (Schwachstelle 1): erscheint, wenn eine fremde Änderung erkannt wurde und nicht sicher auto-geladen werden kann -->
+<div id="update-banner" onclick="applyRemoteUpdate()" title="Neu laden">🔄 Neue Änderungen von anderen — jetzt laden</div>
 <div class="toasts" id="toasts"></div>
 <div id="parea" style="display:none"></div>
 
@@ -791,6 +801,12 @@ let driveLastSync = null;
 let gapiReady = false;
 let gisReady = false;
 let silentAuthInProgress = false;
+// Auto-Refresh (Schwachstelle 1): Polling auf modifiedTime der Drive-Datei
+let driveKnownModifiedTime = null;  // letzter uns bekannter Server-Änderungsstand
+let driveSavePending = false;       // true zwischen lokaler Änderung und abgeschlossenem Drive-Save
+let drivePollTimer = null;          // setInterval-Handle des Pollings
+let updateBannerShown = false;
+const DRIVE_POLL_MS = 30000;        // Poll-Intervall (30 s)
 
 // Called when Google API client lib finishes loading
 function gapiLoaded(){
@@ -963,7 +979,7 @@ async function pickerCallback(data){
   }
 }
 
-async function driveLoad(){
+async function driveLoad(isAuto){
   if(!driveFileId || !driveAccessToken) return;
   driveSyncing = true; updateDriveStatus();
   try{
@@ -994,7 +1010,15 @@ async function driveLoad(){
     if(typeof filter === 'function') filter();
     if(typeof renderProjectsList === 'function' && g0('section-projects') && g0('section-projects').classList.contains('active')) renderProjectsList();
     driveLastSync = new Date();
-    toast(`Aus Drive geladen: ${db.length} Einträge, ${projects.length} Projekte${localDemoMissing.length?` (+${localDemoMissing.length} DEMO lokal ergänzt)`:''}`,'ok');
+    // Server-Änderungsstand merken (für das Auto-Refresh-Polling) und Polling sicherstellen.
+    try{ const mt = await fetchDriveModifiedTime(); if(mt) driveKnownModifiedTime = mt; }catch(_){}
+    hideUpdateBanner();
+    startDrivePolling();
+    if(isAuto){
+      toast(`🔄 Aktualisiert — Änderungen von anderen übernommen (${db.length} Einträge, ${projects.length} Projekte)`,'ok');
+    } else {
+      toast(`Aus Drive geladen: ${db.length} Einträge, ${projects.length} Projekte${localDemoMissing.length?` (+${localDemoMissing.length} DEMO lokal ergänzt)`:''}`,'ok');
+    }
   }catch(e){
     console.error(e);
     toast('Drive-Laden fehlgeschlagen','err');
@@ -1008,28 +1032,81 @@ async function driveSave(){
   driveSyncing = true; updateDriveStatus();
   try{
     const resp = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,
+      `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=id,modifiedTime`,
       { method:'PATCH',
         headers:{ 'Authorization':`Bearer ${driveAccessToken}`, 'Content-Type':'application/json' },
         body: JSON.stringify({glass: db, projects: projects}) }
     );
     if(!resp.ok) throw new Error('HTTP '+resp.status);
+    // Eigenen Schreibstand merken, damit das Polling den eigenen Save nicht als fremde Änderung wertet.
+    try{ const j = await resp.json(); if(j && j.modifiedTime) driveKnownModifiedTime = j.modifiedTime; }catch(_){}
     driveLastSync = new Date();
   }catch(e){
     console.error(e);
     toast('Drive-Speichern fehlgeschlagen','err');
   }finally{
+    driveSavePending = false;
     driveSyncing = false; updateDriveStatus();
   }
 }
 
 function debouncedDriveSave(){
   if(!driveAccessToken || !driveFileId) return;
+  driveSavePending = true;   // Poll soll nicht reloaden, solange ein eigener Save aussteht
   clearTimeout(driveSaveTimer);
   driveSaveTimer = setTimeout(driveSave, 1500);
 }
 
+// ─── Auto-Refresh (Schwachstelle 1) ───────────────────────────────────────────
+// Pollt alle DRIVE_POLL_MS die modifiedTime der Drive-Datei. Ist sie neuer als unser
+// bekannter Stand → jemand anderes hat gespeichert → sicher auto-laden oder Banner zeigen.
+async function fetchDriveModifiedTime(){
+  if(!driveFileId || !driveAccessToken) return null;
+  const resp = await gapi.client.drive.files.get({ fileId: driveFileId, fields: 'modifiedTime' });
+  return (resp.result && resp.result.modifiedTime) || null;
+}
+function startDrivePolling(){
+  if(drivePollTimer || !driveFileId || !driveAccessToken) return;
+  drivePollTimer = setInterval(drivePoll, DRIVE_POLL_MS);
+}
+function stopDrivePolling(){
+  if(drivePollTimer){ clearInterval(drivePollTimer); drivePollTimer = null; }
+}
+async function drivePoll(){
+  if(!driveFileId || !driveAccessToken) return;
+  if(document.hidden) return;                  // Hintergrund-Tab: nicht pollen (Quota schonen)
+  if(driveSyncing || driveSavePending) return; // nicht während eigener Sync/ausstehendem Save
+  try{
+    const serverTime = await fetchDriveModifiedTime();
+    if(!serverTime) return;
+    if(!driveKnownModifiedTime){ driveKnownModifiedTime = serverTime; return; }
+    if(new Date(serverTime).getTime() > new Date(driveKnownModifiedTime).getTime()){
+      onRemoteChangeDetected();
+    }
+  }catch(e){ /* still — kein Toast-Spam bei kurzen Netz-/Token-Aussetzern */ }
+}
+// Sicher automatisch neu laden, oder lieber nur Hinweis-Banner zeigen?
+function isSafeToAutoReload(){
+  if(driveSavePending || driveSyncing) return false;
+  if(g0('section-form') && g0('section-form').classList.contains('active')) return false; // Erfassung offen
+  if(document.querySelector('.overlay.open') || document.querySelector('.lb.open')) return false; // Modal/Lightbox
+  if(typeof matchReqs !== 'undefined' && matchReqs && matchReqs.length > 0) return false; // Matching läuft
+  return true;
+}
+function onRemoteChangeDetected(){
+  if(isSafeToAutoReload()) driveLoad(true);
+  else showUpdateBanner();
+}
+function showUpdateBanner(){ const b = g0('update-banner'); if(b && !updateBannerShown){ b.classList.add('show'); updateBannerShown = true; } }
+function hideUpdateBanner(){ const b = g0('update-banner'); if(b) b.classList.remove('show'); updateBannerShown = false; }
+function applyRemoteUpdate(){ hideUpdateBanner(); driveLoad(true); }
+// Beim Zurückkehren zum Tab sofort einmal prüfen — der wertvollste Moment für Aktualität.
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) drivePoll(); });
+
 function driveDisconnect(){
+  stopDrivePolling();
+  driveKnownModifiedTime = null;
+  hideUpdateBanner();
   if(driveAccessToken){
     try{ google.accounts.oauth2.revoke(driveAccessToken, ()=>{}); }catch(_){}
   }
