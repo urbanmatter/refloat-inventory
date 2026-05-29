@@ -325,6 +325,7 @@ tr:last-child td{border-bottom:none}
 .pstatus.aktiv{background:#e0e7ff;color:#3730a3}
 .pstatus.abgeschlossen{background:#dcfce7;color:#15803d}
 .pstatus.storniert{background:#f3f4f6;color:#6b7280}
+.pstatus.archiviert{background:#fef3c7;color:#92400e}
 .proj-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .proj-detail-hd{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 26px;margin-bottom:18px}
 .proj-detail-hd h1{font-size:1.4rem;font-weight:700;margin:0 0 4px}
@@ -655,11 +656,13 @@ tr:last-child td{border-bottom:none}
   <div class="sec-hd">
     <h1>Projekte <span class="cnt" id="proj-cnt">0</span></h1>
     <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="repairStockFromProjects()" title="Reservierte/verkaufte Stückzahlen aller Bestand-Posten neu aus den Projekten berechnen (korrigiert verwaiste Buchungen, z.B. von gelöschten Projekten)">🔧 Bestand abgleichen</button>
       <select class="btn-ghost filt" id="proj-fstatus" onchange="renderProjectsList()">
         <option value="">Alle Status</option>
         <option value="aktiv">Aktiv</option>
         <option value="abgeschlossen">Abgeschlossen</option>
         <option value="storniert">Storniert</option>
+        <option value="archiviert">Archiviert</option>
       </select>
     </div>
   </div>
@@ -1266,6 +1269,17 @@ function bookAllocSold(a){
   e.soldQty = Math.min(Number(e.qty)||0, (Number(e.soldQty)||0) + sheets);
   recomputeStatus(e);
 }
+function bookAllocUnsold(a){
+  // Übergang von verkauft → reserviert (Rücknahme eines Abschlusses, für 1 Allokation)
+  const targetId = a.virtual ? a.parentId : a.stockId;
+  const lc = a.layerCount || 1;
+  const sheets = a.virtual ? Math.ceil((a.sheetsTaken||0) / lc) : (a.sheetsTaken||0);
+  const e = findStockById(targetId);
+  if(!e) return;
+  e.soldQty = Math.max(0, (Number(e.soldQty)||0) - sheets);
+  e.reservedQty = Math.min(Number(e.qty)||0, (Number(e.reservedQty)||0) + sheets);
+  recomputeStatus(e);
+}
 function nextProjectMatchId(year){
   // PRJ-MATCH-YYYY-### — eigener Counter, damit Erfassungs-Projekte (PRJ-YYYY-####) ungestört bleiben.
   const pfx='PRJ-MATCH-'+year+'-'; let mx=0;
@@ -1275,16 +1289,19 @@ function nextProjectMatchId(year){
 
 // ─── Projekte-Liste ───
 function renderProjectsList(){
-  g0('proj-cnt').textContent = projects.length;
   const fs = g0('proj-fstatus').value;
-  const list = projects
-    .filter(p => !fs || p.status === fs)
-    .slice()
-    .sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  let list = projects.slice();
+  if(fs === 'archiviert'){
+    list = list.filter(p => p.archived);            // nur Archiv anzeigen
+  } else {
+    list = list.filter(p => !p.archived);           // Archivierte standardmäßig ausblenden
+    if(fs) list = list.filter(p => p.status === fs);
+  }
+  list.sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  g0('proj-cnt').textContent = list.length;
   if(list.length === 0){
-    g0('proj-list').innerHTML = '';
     g0('proj-empty').style.display = projects.length===0 ? 'block' : 'none';
-    if(projects.length>0) g0('proj-list').innerHTML = '<div style="color:var(--subtext);padding:20px;text-align:center">Keine Projekte mit diesem Filter.</div>';
+    g0('proj-list').innerHTML = projects.length>0 ? '<div style="color:var(--subtext);padding:20px;text-align:center">Keine Projekte mit diesem Filter.</div>' : '';
     return;
   }
   g0('proj-empty').style.display = 'none';
@@ -1310,6 +1327,7 @@ function renderProjectsList(){
       </div>
       <div style="text-align:right">
         <span class="pstatus ${p.status}">${p.status}</span>
+        ${p.archived?'<div style="margin-top:6px"><span class="pstatus archiviert">archiviert</span></div>':''}
       </div>
     </div>`;
   }).join('');
@@ -1345,7 +1363,17 @@ function renderProjectDetail(){
       <button class="btn btn-ghost btn-sm" onclick="cancelProject('${p.id}')">↺ Stornieren</button>
       <button class="btn btn-outline btn-sm" onclick="pdfProject('${p.id}')">📄 PDF exportieren</button>
       <button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 Löschen</button>`;
-  } else {
+  } else if(p.status === 'abgeschlossen'){
+    // Verkäufe sind dokumentierte Tatsachen → kein Löschen. Stattdessen: bewusst rückgängig machen
+    // (verkauft→reserviert, Projekt wird wieder aktiv) oder archivieren (ausblenden, Beleg bleibt).
+    const archiveBtn = p.archived
+      ? `<button class="btn btn-ghost btn-sm" onclick="unarchiveProject('${p.id}')">📤 Aus Archiv holen</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="archiveProject('${p.id}')">🗄 Archivieren</button>`;
+    actions = `
+      <button class="btn btn-outline btn-sm" onclick="reactivateProject('${p.id}')">↩ Abschluss rückgängig</button>
+      ${archiveBtn}
+      <button class="btn btn-outline btn-sm" onclick="pdfProject('${p.id}')">📄 PDF exportieren</button>`;
+  } else { // storniert
     actions = `
       <button class="btn btn-outline btn-sm" onclick="pdfProject('${p.id}')">📄 PDF exportieren</button>
       <button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 Löschen</button>`;
@@ -1366,7 +1394,10 @@ function renderProjectDetail(){
         </div>
         ${p.notes ? '<div style="margin-top:10px;background:var(--bg);padding:10px 14px;border-radius:8px;font-size:.88rem;line-height:1.55;white-space:pre-wrap">'+escapeHtml(p.notes)+'</div>' : ''}
       </div>
-      <span class="pstatus ${p.status}">${p.status}</span>
+      <div style="text-align:right">
+        <span class="pstatus ${p.status}">${p.status}</span>
+        ${p.archived?'<div style="margin-top:6px"><span class="pstatus archiviert">archiviert</span></div>':''}
+      </div>
     </div>
     <div class="stats" style="margin-top:14px">
       <div class="chip"><strong>${(p.requests||[]).length}</strong> Anfrage-Positionen</div>
@@ -1540,18 +1571,80 @@ function cancelProject(id){
   toast('Projekt storniert, Reservierungen freigegeben.','ok');
 }
 
+function reactivateProject(id){
+  const p = projects.find(x => x.id === id);
+  if(!p || p.status !== 'abgeschlossen') return;
+  if(!confirm(`Abschluss von „${p.name}" rückgängig machen?\n\nDie verkauften Stücke werden wieder als „reserviert" gebucht und das Projekt wird wieder „aktiv". Von dort kannst du es stornieren (Bestand komplett freigeben), bearbeiten oder erneut abschließen.`)) return;
+  (p.allocations||[]).forEach(a => bookAllocUnsold(a));
+  p.status = 'aktiv';
+  p.archived = false;            // reaktiviertes Projekt gehört zurück in die aktive Liste
+  p.updatedAt = now();
+  persist();
+  renderProjectDetail();
+  toast('Abschluss rückgängig — Projekt ist wieder aktiv.','ok');
+}
+function archiveProject(id){
+  const p = projects.find(x => x.id === id);
+  if(!p || p.status !== 'abgeschlossen') return;
+  p.archived = true;
+  p.updatedAt = now();
+  persist();
+  renderProjectDetail();
+  toast('Projekt archiviert — Verkaufs-Beleg bleibt erhalten.','ok');
+}
+function unarchiveProject(id){
+  const p = projects.find(x => x.id === id);
+  if(!p) return;
+  p.archived = false;
+  p.updatedAt = now();
+  persist();
+  renderProjectDetail();
+  toast('Projekt aus dem Archiv geholt.','ok');
+}
+// Gleicht die Bestand-Zähler (reservedQty/soldQty) wieder exakt mit den vorhandenen Projekten ab.
+// Quelle der Wahrheit: aktive Projekte → reserviert, abgeschlossene (auch archivierte) → verkauft,
+// stornierte → nichts. Repariert "verwaiste" Buchungen (z.B. von gelöschten Projekten) und Drift.
+function repairStockFromProjects(){
+  if(!confirm('Bestand mit Projekten abgleichen?\n\nDie reservierten/verkauften Stückzahlen jedes Glas-Postens werden neu aus den vorhandenen Projekten berechnet. Das korrigiert Bestände, die z.B. von einem inzwischen gelöschten Projekt „hängengeblieben" sind.')) return;
+  const resMap = new Map(), soldMap = new Map();
+  for(const p of projects){
+    const target = p.status === 'abgeschlossen' ? soldMap : (p.status === 'aktiv' ? resMap : null);
+    if(!target) continue;
+    for(const a of (p.allocations||[])){
+      const tid = a.virtual ? a.parentId : a.stockId;
+      const lc = a.layerCount || 1;
+      const sheets = a.virtual ? Math.ceil((a.sheetsTaken||0)/lc) : (a.sheetsTaken||0);
+      target.set(tid, (target.get(tid)||0) + sheets);
+    }
+  }
+  let changed = 0;
+  for(const e of db){
+    const cap = Number(e.qty)||0;
+    const newSold = Math.min(cap, soldMap.get(e.id)||0);
+    const newRes  = Math.min(Math.max(0, cap - newSold), resMap.get(e.id)||0);
+    if((Number(e.reservedQty)||0) !== newRes || (Number(e.soldQty)||0) !== newSold){
+      e.reservedQty = newRes; e.soldQty = newSold;
+      recomputeStatus(e);
+      changed++;
+    }
+  }
+  persist();
+  if(typeof filter==='function') filter();
+  toast(changed>0 ? `${changed} Bestand-Posten abgeglichen.` : 'Bestand war bereits konsistent.','ok');
+}
 function deleteProject(id){
   const p = projects.find(x => x.id === id);
   if(!p) return;
-  const warn = p.status === 'aktiv'
-    ? `\n\nDas Projekt ist AKTIV — die Reservierungen werden zurückgegeben.`
-    : (p.status === 'abgeschlossen' ? `\n\nDas Projekt ist abgeschlossen — Verkäufe bleiben gebucht, nur das Projekt-Dokument wird gelöscht.` : '');
+  if(p.status === 'abgeschlossen'){
+    alert('Abgeschlossene Projekte können nicht gelöscht werden, weil die verkauften Scheiben dokumentierte Tatsachen sind.\n\n• „↩ Abschluss rückgängig" — falls der Verkauf doch nicht stattgefunden hat (Stücke werden wieder reserviert; danach kannst du stornieren und löschen).\n• „🗄 Archivieren" — um das Projekt aus der Liste auszublenden, den Verkaufs-Beleg aber zu behalten.');
+    return;
+  }
+  const warn = p.status === 'aktiv' ? `\n\nDas Projekt ist AKTIV — die Reservierungen werden zurückgegeben.` : '';
   if(!confirm(`Projekt „${p.name}" endgültig löschen?${warn}`)) return;
   if(p.status === 'aktiv'){
     (p.allocations||[]).forEach(a => bookAllocReserve(a, -1));
   }
   // Original-Datei in Drive: lassen wir liegen (User kann sie über Drive selbst löschen, falls gewünscht).
-  // Sub-Treffer-Konfliktrisiko bei Drive-Lösung: zu hoch für automatischen Cleanup.
   projects = projects.filter(x => x.id !== id);
   persist();
   toast('Projekt gelöscht.','ok');
