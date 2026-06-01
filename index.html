@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ReFloat Inventory</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- ExcelJS: nur für die GESTALTETE Anfrage-Vorlage (Header-Styling + Glastyp-Dropdown). Import läuft weiter über SheetJS. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1371,6 +1373,18 @@ function nextProjectMatchId(year){
 }
 
 // ─── Projekte-Liste ───
+// Flächen-Kennzahlen eines Projekts in m²: angefragte Gesamtfläche, davon gedeckt, und die
+// belegte Bestand-Glasfläche (reserviert/verkauft, inkl. Verschnitt).
+function projAreaStats(p){
+  let reqTotal = 0, reqCovered = 0, stockArea = 0;
+  (p.requests||[]).forEach(r => { reqTotal += (((Number(r.w)||0)*(Number(r.h)||0))/1e6) * (Number(r.qty)||0); });
+  (p.allocations||[]).forEach(a => {
+    reqCovered += (((Number(a.reqW)||0)*(Number(a.reqH)||0))/1e6) * (Number(a.delivered)||0);
+    stockArea  += (((Number(a.stockW)||0)*(Number(a.stockH)||0))/1e6) * (Number(a.sheetsTaken)||0);
+  });
+  return { reqTotal, reqCovered, stockArea };
+}
+
 function renderProjectsList(){
   const fs = g0('proj-fstatus').value;
   let list = projects.slice();
@@ -1393,6 +1407,7 @@ function renderProjectsList(){
     const totalCovered = (p.allocations||[]).reduce((s,a) => s + (Number(a.delivered)||0), 0);
     const stockIds = new Set((p.allocations||[]).map(a => a.virtual ? a.parentId : a.stockId));
     const totalSheets = (p.allocations||[]).reduce((s,a) => s + (Number(a.sheetsTaken)||0), 0);
+    const area = projAreaStats(p);
     const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('de-DE') : '–';
     return `<div class="proj-card" onclick="openProject('${p.id}')">
       <div>
@@ -1405,7 +1420,9 @@ function renderProjectsList(){
         <div class="stats-row">
           <div class="chip">${(p.requests||[]).length} Anfrage-Positionen</div>
           <div class="chip">${totalCovered}/${totalDemanded} Scheiben</div>
+          <div class="chip">${fmtM2n(area.reqCovered)}/${fmtM2n(area.reqTotal)} m² gedeckt</div>
           <div class="chip">${totalSheets} Bestand-Stück · ${stockIds.size} Posten</div>
+          <div class="chip">Lager ${fmtM2n(area.stockArea)} m²</div>
         </div>
       </div>
       <div style="text-align:right">
@@ -1438,6 +1455,7 @@ function renderProjectDetail(){
     if(a.reqW>0 && a.reqH>0) totalUsedArea += (a.delivered||0) * a.reqW * a.reqH;
   });
   const totalWastePct = totalSheetArea > 0 ? Math.max(0, 1 - totalUsedArea/totalSheetArea) : 0;
+  const area = projAreaStats(p);
   // Aktionen je nach Status
   let actions = '';
   if(p.status === 'aktiv'){
@@ -1459,6 +1477,7 @@ function renderProjectDetail(){
       <button class="btn btn-outline btn-sm" onclick="pdfProject('${p.id}')">📄 PDF exportieren</button>`;
   } else { // storniert
     actions = `
+      <button class="btn btn-outline btn-sm" onclick="uncancelProject('${p.id}')">↩ Stornierung rückgängig</button>
       <button class="btn btn-outline btn-sm" onclick="pdfProject('${p.id}')">📄 PDF exportieren</button>
       <button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 Löschen</button>`;
   }
@@ -1486,7 +1505,9 @@ function renderProjectDetail(){
     <div class="stats" style="margin-top:14px">
       <div class="chip"><strong>${(p.requests||[]).length}</strong> Anfrage-Positionen</div>
       <div class="chip"><strong>${totalCovered}/${totalDemanded}</strong> Scheiben gedeckt</div>
+      <div class="chip" title="Angefragte Glasfläche: davon gedeckt / gesamt bestellt">Anfrage-Fläche: <strong>${fmtM2n(area.reqCovered)}</strong> / ${fmtM2n(area.reqTotal)} m² gedeckt</div>
       <div class="chip"><strong>${totalSheets}</strong> Bestand-Stück aus <strong>${stockIds.size}</strong> Posten</div>
+      <div class="chip" title="Bestand-Glasfläche, die dieser Plan belegt (aktiv = reserviert, abgeschlossen = verkauft) — inkl. Verschnitt.">Lagerfläche: <strong>${fmtM2n(area.stockArea)}</strong> m²</div>
       <div class="chip">⌀ Verschnitt: <strong>${(totalWastePct*100).toFixed(0)}%</strong></div>
     </div>
     <div class="proj-actions">${actions}${sourceLink}</div>
@@ -1653,6 +1674,19 @@ function cancelProject(id){
   persist();
   renderProjectDetail();
   toast('Projekt storniert, Reservierungen freigegeben.','ok');
+}
+
+// Stornierung rückgängig: storniert → aktiv, Reservierungen wieder buchen.
+function uncancelProject(id){
+  const p = projects.find(x => x.id === id);
+  if(!p || p.status !== 'storniert') return;
+  if(!confirm(`Stornierung von „${p.name}" rückgängig machen?\n\nDas Projekt wird wieder „aktiv" und die zugehörigen Bestand-Stücke werden erneut reserviert. Falls sich der Bestand zwischenzeitlich geändert hat, hilft danach „🔧 Bestand abgleichen".`)) return;
+  (p.allocations||[]).forEach(a => bookAllocReserve(a, +1));
+  p.status = 'aktiv';
+  p.updatedAt = now();
+  persist();
+  renderProjectDetail();
+  toast('Stornierung rückgängig — Projekt ist wieder aktiv.','ok');
 }
 
 function reactivateProject(id){
@@ -2429,6 +2463,7 @@ let dashMode = 'stk'; // 'stk' | 'm2'
 function setDashMode(m){ dashMode = m; renderDashboard(); }
 function entryArea(e){ return ((Number(e.w)||0)/1000) * ((Number(e.h)||0)/1000); } // m² je Scheibe
 function fmtM2(x){ return x.toLocaleString('de-DE',{maximumFractionDigits: (x>0 && x<10)?1:0}) + ' m²'; }
+function fmtM2n(x){ return (Number(x)||0).toLocaleString('de-DE',{maximumFractionDigits: (x>0 && x<10)?1:0}); } // ohne Einheit
 function renderDashboard(){
   const host = g0('dashboard'); if(!host) return;
   if(!db.length){ host.style.display='none'; return; }
@@ -2646,8 +2681,11 @@ function toast(msg,type){ const c=g0('toasts'),t=document.createElement('div'); 
 
 // --- Spalten-Aliasse (Header-Erkennung, case-insensitiv, normalisiert) ---
 const MATCH_COL_ALIAS = {
+  projId:   ['projektid','projekt_id','projektnr','projektnummer','project_id','projectid','project'],
+  posId:    ['posid','pos_id','positionsid','positionid','posnr','positionsnummer'],
   type:     ['glastyp','typ','type','glass_type','glasstype'],
-  d:        ['glasdicke','glasdickeges','glasdickegesamt','glasdicke_mm','dicke','dicke_mm','d','thickness','thickness_mm'],
+  glasaufbau:['glasaufbau','aufbau','glassbuild','glass_build','structure'],
+  d:        ['glasdicke','glasdickeinmm','glasdickeges','glasdickegesamt','glasdicke_mm','dicke','dicke_mm','d','thickness','thickness_mm'],
   w:        ['breite','breite_mm','breitemm','width','min_width','min_width_mm','w'],
   h:        ['höhe','hoehe','höhe_mm','hoehe_mm','höhemm','hoehemm','height','min_height','min_height_mm','h'],
   coating:  ['beschichtung','beschichtungkurzinfo','coating'],
@@ -2703,8 +2741,19 @@ function normalizeRequest(row, cols, rowIdx){
   const typeRaw = get('type');
   const coatRaw = get('coating');
   const colorRaw = get('color');
+  // Anfrage-Kennung aus Projekt-ID · Pos.-ID kombinieren; Fallback auf alte „Anfrage-ID"-Spalte.
+  const pj = isEmpty(get('projId')) ? '' : String(get('projId')).trim();
+  const ps = isEmpty(get('posId')) ? '' : String(get('posId')).trim();
+  let reqId;
+  if(pj && ps) reqId = pj + ' · ' + ps;
+  else if(pj || ps) reqId = pj || ps;
+  else if(!isEmpty(get('reqId'))) reqId = String(get('reqId')).trim();
+  else reqId = 'A-' + String(rowIdx+1).padStart(3,'0');
   return {
-    reqId: isEmpty(get('reqId')) ? ('A-'+String(rowIdx+1).padStart(3,'0')) : String(get('reqId')).trim(),
+    reqId,
+    projId: pj || null,
+    posId:  ps || null,
+    glasaufbau: isEmpty(get('glasaufbau')) ? null : String(get('glasaufbau')).trim(),  // gespeichert, (noch) nicht gematcht
     type:  isEmpty(typeRaw)  ? null : (MATCH_TYPE_ALIAS[normValue(typeRaw)]  || String(typeRaw).trim()),
     d:     num(get('d')),
     w:     num(get('w')),
@@ -3460,7 +3509,8 @@ async function submitProjectCreate(){
     });
     // 2) Anfrage-Snapshot speichern (nur die übernommenen Felder, kein Datei-Roh)
     const requests = matchReqs.map(r => ({
-      reqId: r.reqId, type: r.type||null, d: r.d!=null?r.d:null,
+      reqId: r.reqId, projId: r.projId||null, posId: r.posId||null, glasaufbau: r.glasaufbau||null,
+      type: r.type||null, d: r.d!=null?r.d:null,
       w: r.w!=null?r.w:null, h: r.h!=null?r.h:null,
       coating: r.coating||null, color: r.color||null, qty: r.qty!=null?r.qty:null
     }));
@@ -3690,16 +3740,29 @@ function renderMatchDetail(idx){
   // 3. Liste der grundsätzlich passenden Bestand-Posten (Referenz / alternative Auswahl)
   if(res && res.matches.length > 0){
     const hasDims = (r.w!=null || r.h!=null);
+    // Echter (Combo-)Verschnitt pro Posten für die benötigte Menge — gleiche Größe wie auf den Karten.
+    const refReqArea = (Number(r.w)||0)*(Number(r.h)||0);
+    const refQty = Number(r.qty)||0;
+    const refCombo = (e)=>{
+      const cuts = e._cuts||1, stockArea = (Number(e.w)||0)*(Number(e.h)||0);
+      if(!hasDims || cuts<=0 || stockArea<=0 || refReqArea<=0) return null;
+      if(refQty<=0) return e._wastePct||0;                 // ohne Mengenangabe: Pro-Stück (Vollnutzung)
+      const avail = Math.max(1, Math.floor((e._deliverable!=null ? e._deliverable : (e.qty||1))/cuts));
+      const sheetsTaken = Math.min(Math.ceil(refQty/cuts), avail);
+      const delivered = Math.min(sheetsTaken*cuts, refQty);
+      return sheetsTaken>0 ? Math.max(0, 1 - (delivered*refReqArea)/(sheetsTaken*stockArea)) : 0;
+    };
+    const sortedMatches = res.matches.slice().sort((a,b)=>{ const ca=refCombo(a), cb=refCombo(b); if(ca==null&&cb==null) return 0; if(ca==null) return 1; if(cb==null) return -1; return ca-cb; });
     html += `<details style="margin-top:12px"><summary style="cursor:pointer;color:var(--subtext);font-size:.85rem">Alle ${res.matches.length} grundsätzlich passenden Bestand-Posten anzeigen (Referenz)</summary>
     <div class="tbl-wrap" style="margin-top:8px"><table>
       <thead><tr>
         <th>ID</th><th>Projekt</th><th>Typ</th><th>Maße (mm)</th><th>R-Strategie</th>
         <th title="Maximal lieferbare Anfrage-Scheiben aus diesem Posten (vor globaler Plan-Aufteilung)">Lieferbar</th>
-        <th title="Verschnitt pro Bestandsscheibe bei VOLLnutzung (alle Zuschnitte entnommen). Die Vorschlags-Karten oben zeigen dagegen den ECHTEN Verschnitt für die tatsächlich benötigte Menge.">Verschnitt/Stück</th>
+        <th title="Echter Verschnitt, wenn dieser Posten die benötigte Menge deckt — dieselbe Größe wie auf den Vorschlags-Karten.">Verschnitt</th>
         <th>Preis</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>
-        ${res.matches.map(e=>{
+        ${sortedMatches.map(e=>{
           const targetId = e._virtual ? e._parentId : e.id;
           const virtBadge = e._virtual ? `<span class="virtual-badge" title="Unbeschichtete Floatglas-Scheibe aus Isolierglas-Aufbau (${escapeHtml(e._parentId)})">📦 aus ISO-Aufbau</span>` : '';
           const cuts = e._cuts||1;
@@ -3707,7 +3770,8 @@ function renderMatchDetail(idx){
           const liefertCell = cuts>1
             ? `${deliverable} <span style="color:var(--subtext);font-size:.75rem">(${cuts}/Stk)</span>`
             : `${e.qty||1}`;
-          const wasteCell = hasDims ? `${((e._wastePct||0)*100).toFixed(0)}%` : '–';
+          const cw = refCombo(e);
+          const wasteCell = cw==null ? '–' : `${(cw*100).toFixed(0)}%`;
           return `<tr onclick="closeMatchAndOpen('${targetId}')" style="cursor:pointer">
           <td><span class="mono">${escapeHtml(e.id)}</span>${e._rotated?'<span class="rotated-badge" title="passt nur gedreht">↻</span>':''}${virtBadge}</td>
           <td>${escapeHtml((e.projLabel||e.building||'–').slice(0,32))}</td>
@@ -3732,49 +3796,88 @@ function closeMatchAndOpen(id){ openDetail(id); }
 
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
-// ─── Excel-Vorlage zum Download ───
-function downloadMatchTemplate(){
-  if(typeof XLSX==='undefined'){ toast('Excel-Bibliothek nicht geladen','err'); return; }
-  const headers = ['Anfrage-ID','Glastyp','Glasdicke (mm)','Breite (mm)','Höhe (mm)','Beschichtung','Stückzahl','Farbe'];
+// ─── Excel-Vorlage zum Download (gestaltet, mit Glastyp-Dropdown — via ExcelJS) ───
+// Spaltenreihenfolge bewusst fix: Projekt-ID · Pos.-ID · Glastyp · Glasaufbau · Glasdicke in (mm)
+// · Breite (mm) · Höhe (mm) · Stückzahl · Beschichtung · Farbe. Glasaufbau ist für künftige
+// Funktionen vorgesehen (wird eingelesen, aktuell nicht gematcht).
+async function downloadMatchTemplate(){
+  if(typeof ExcelJS==='undefined'){ toast('Vorlage-Bibliothek (ExcelJS) lädt noch — kurz warten und erneut klicken.','err'); return; }
+  const headers = ['Projekt-ID','Pos.-ID','Glastyp','Glasaufbau','Glasdicke in (mm)','Breite (mm)','Höhe (mm)','Stückzahl','Beschichtung','Farbe'];
+  const widths  = [16,10,22,18,18,12,12,11,16,12];
   const examples = [
-    ['A-001','2-fach Isolierglas',8,1200,800,'Wärmeschutz',15,''],
-    ['A-002','Floatglas',6,900,600,'',40,''],
-    ['A-003','3-fach Isolierglas',12,1000,1500,'Wärmeschutz',10,'Klar'],
-    ['A-004','Floatglas',4,700,500,'',25,'Grün']
+    ['P-2026-001','1','2-fach Isolierglas','4/16/4',8,1200,800,15,'Wärmeschutz',''],
+    ['P-2026-001','2','Floatglas','',6,900,600,40,'',''],
+    ['P-2026-002','1','3-fach Isolierglas','4/12/4/12/4',12,1000,1500,10,'Wärmeschutz','Klar'],
+    ['P-2026-002','2','Floatglas','',4,700,500,25,'','Grün']
   ];
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...examples]);
-  ws['!cols'] = [{wch:12},{wch:22},{wch:14},{wch:12},{wch:12},{wch:18},{wch:10},{wch:12}];
-  XLSX.utils.book_append_sheet(wb, ws, 'Anfragen');
+  try{
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'ReFloat Inventory'; wb.created = new Date();
 
-  const help = [
-    ['Hinweise zur Anfrage-Vorlage'],
-    [''],
-    ['Spalte','Bedeutung','Erlaubte Werte / Hinweise'],
-    ['Anfrage-ID','Beliebige Kennung pro Anfrage (nur zur Anzeige, kein Matching-Kriterium).','z.B. A-001, R-2024-12'],
-    ['Glastyp','Wird exakt verglichen.','Floatglas · 2-fach Isolierglas · 3-fach Isolierglas · VSG · ESG · Verbundglas · Sonstiges'],
-    ['Glasdicke (mm)','Glasdicke gesamt (ohne Abstandshalter), exakter Match.','z.B. 4, 6, 8, 10, 12'],
-    ['Breite (mm)','Mindestbreite. Bestand muss in Breite UND Höhe je 15 mm größer sein (sichere Randabschnitte). Drehung wird geprüft.','z.B. 1200'],
-    ['Höhe (mm)','Mindesthöhe. Aus einer Bestandsscheibe können mehrere Anfrage-Scheiben geschnitten werden, wenn die Maße passen.','z.B. 800'],
-    ['Beschichtung','Wird exakt verglichen.','Keine · Wärmeschutz · Sonnenschutz · Sonstiges'],
-    ['Stückzahl','Anzahl benötigter Anfrage-Scheiben. Mehrfach-Zuschnitt und Posten-Kombination werden automatisch berücksichtigt.','z.B. 50'],
-    ['Farbe','Wird exakt verglichen. Leer lassen = "Klar" wird angenommen (nur klare Bestandsgläser matchen).','Klar · Grün · Grau · Bronze · Blau · Sonstiges'],
-    [''],
-    ['Allgemein:'],
-    ['• Leere Felder bedeuten „egal" und werden beim Matching übersprungen.'],
-    ['• Englische Spaltennamen werden ebenfalls erkannt (glass_type, thickness_mm, min_width_mm, min_height_mm, coating, quantity_required, color).'],
-    ['• Kürzel werden erkannt: Float → Floatglas, ISO2 → 2-fach Isolierglas, ISO3 → 3-fach Isolierglas, Low-E → Wärmeschutz.'],
-    ['• Es zählt: Bestand muss ALLE gesetzten Kriterien erfüllen (UND-Verknüpfung).'],
-    ['• Mehrfach-Zuschnitt: floor((Bestandsbreite − 15) / Anfragebreite) × floor((Bestandshöhe − 15) / Anfragehöhe), beste Orientierung.'],
-    ['• Bei Floatglas-Anfragen werden unbeschichtete Glaslagen aus Isolierglas-Aufbauten als Sub-Treffer mit gezählt.'],
-    ['• Bei nicht-deckendem Einzelbestand zeigt das Tool eine empfohlene Kombination mehrerer Posten mit Verschnitt-Anzeige.']
-  ];
-  const wsHelp = XLSX.utils.aoa_to_sheet(help);
-  wsHelp['!cols'] = [{wch:18},{wch:52},{wch:62}];
-  XLSX.utils.book_append_sheet(wb, wsHelp, 'Hinweise');
+    const ws = wb.addWorksheet('Anfrage', { views:[{ state:'frozen', ySplit:1 }] });
+    ws.columns = headers.map((h,i)=>({ header:h, width:widths[i] }));
+    // Kopfzeile: Markenviolett, weiße fette Schrift, zentriert
+    const head = ws.getRow(1); head.height = 22;
+    head.eachCell(c=>{
+      c.font = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF5B4BE1'} };
+      c.alignment = { vertical:'middle', horizontal:'center' };
+    });
+    examples.forEach(r=>ws.addRow(r));
+    // dezente Trennlinie unter den Beispielzeilen
+    for(let r=2; r<=1+examples.length; r++){
+      ws.getRow(r).eachCell(c=>{ c.border = { bottom:{ style:'hair', color:{argb:'FFE5E7EB'} } }; });
+    }
+    // Glastyp-Dropdown (Spalte C) für Zeilen 2..500
+    const typeList = '"Floatglas,2-fach Isolierglas,3-fach Isolierglas,VSG,ESG,Verbundglas,Sonstiges"';
+    for(let r=2; r<=500; r++){
+      ws.getCell('C'+r).dataValidation = {
+        type:'list', allowBlank:true, formulae:[typeList],
+        showErrorMessage:true, errorStyle:'warning',
+        error:'Bitte einen der vorgegebenen Glastypen wählen (oder Zelle leer lassen).'
+      };
+    }
 
-  XLSX.writeFile(wb, 'refloat-anfrage-vorlage.xlsx');
-  toast('Vorlage heruntergeladen','ok');
+    // Hinweise-Blatt
+    const wsH = wb.addWorksheet('Hinweise');
+    wsH.columns = [{width:20},{width:56},{width:60}];
+    const title = wsH.addRow(['Hinweise zur Anfrage-Vorlage']); title.font = { bold:true, size:13 };
+    wsH.addRow([]);
+    const hh = wsH.addRow(['Spalte','Bedeutung','Erlaubte Werte / Hinweise']);
+    hh.font = { bold:true }; hh.eachCell(c=>{ c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEDEBFB'} }; });
+    const rows = [
+      ['Projekt-ID','Kennung des Kundenprojekts/Auftrags. Wird mit der Pos.-ID zur Anfrage-Kennung kombiniert („Projekt-ID · Pos.-ID").','z.B. P-2026-001'],
+      ['Pos.-ID','Positionsnummer innerhalb des Projekts.','z.B. 1, 2, 3'],
+      ['Glastyp','Wird exakt verglichen. Dropdown-Auswahl.','Floatglas · 2-fach Isolierglas · 3-fach Isolierglas · VSG · ESG · Verbundglas · Sonstiges'],
+      ['Glasaufbau','Optional. Wird eingelesen und gespeichert (für künftige Funktionen), beeinflusst das Matching derzeit NICHT.','z.B. 4/16/4'],
+      ['Glasdicke in (mm)','Glasdicke gesamt (ohne Abstandshalter), exakter Match.','z.B. 4, 6, 8, 10, 12'],
+      ['Breite (mm)','Mindestbreite. Bestand muss in Breite UND Höhe je 15 mm größer sein. Drehung wird geprüft.','z.B. 1200'],
+      ['Höhe (mm)','Mindesthöhe. Aus einer Bestandsscheibe können mehrere Anfrage-Scheiben geschnitten werden.','z.B. 800'],
+      ['Stückzahl','Anzahl benötigter Anfrage-Scheiben. Mehrfach-Zuschnitt + Posten-Kombination automatisch.','z.B. 50'],
+      ['Beschichtung','Wird exakt verglichen.','Keine · Wärmeschutz · Sonnenschutz · Sonstiges'],
+      ['Farbe','Wird exakt verglichen. Leer = „Klar" wird angenommen (nur klare Bestandsgläser matchen).','Klar · Grün · Grau · Bronze · Blau · Sonstiges']
+    ];
+    rows.forEach(r=>wsH.addRow(r));
+    wsH.addRow([]);
+    const gen = wsH.addRow(['Allgemein:']); gen.font = { bold:true };
+    [
+      '• Leere Felder bedeuten „egal" und werden beim Matching übersprungen (Ausnahme: leere Farbe → „Klar").',
+      '• Bestand muss ALLE gesetzten Kriterien erfüllen (UND-Verknüpfung).',
+      '• Mehrfach-Zuschnitt: floor((Bestandsbreite − 15)/Anfragebreite) × floor((Bestandshöhe − 15)/Anfragehöhe), beste Orientierung.',
+      '• Bei Floatglas-Anfragen werden unbeschichtete Glaslagen aus Isolierglas-Aufbauten als Sub-Treffer mitgezählt.',
+      '• Reihenfolge/Benennung der Spalten bitte nicht ändern.'
+    ].forEach(t=>wsH.addRow([t]));
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'refloat-anfrage-vorlage.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    toast('Vorlage heruntergeladen','ok');
+  }catch(err){
+    console.error(err); toast('Vorlage konnte nicht erstellt werden: '+err.message,'err');
+  }
 }
 
 // ─── Demo-Bestandsdaten ───
