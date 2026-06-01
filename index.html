@@ -427,6 +427,18 @@ tr:last-child td{border-bottom:none}
           <span class="desc">Öffnet den Google Datei-Picker. Wähle die geteilte Datei aus „Geteilt mit mir" — die App merkt sie sich.</span>
         </button>
       </div>
+      <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:700;margin-bottom:4px">💾 Daten-Backup</div>
+        <div style="color:var(--subtext);font-size:.85rem;margin-bottom:10px">Sichert alle Erfassungen und Projekte als Datei auf deinen Rechner. (Fotos bleiben über die Drive-Verknüpfung erhalten.)</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-soft btn-sm" onclick="downloadBackup()">💾 Backup herunterladen</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('backup-file').click()">↩ Backup wiederherstellen</button>
+          <input type="file" id="backup-file" accept="application/json,.json" style="display:none" onchange="restoreBackupFile(event)">
+        </div>
+        <div style="font-weight:700;margin:16px 0 4px">🗓 Automatische Backups (Drive)</div>
+        <div style="color:var(--subtext);font-size:.82rem;margin-bottom:8px">Täglich automatisch im Drive-Ordner „ReFloat-Backups". Die letzten 30 Tage täglich, danach eines pro Woche.</div>
+        <div id="drive-backups-list" style="max-height:200px;overflow:auto"></div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost btn-sm" id="drive-disconnect-btn" onclick="driveDisconnect()" style="display:none">Verbindung trennen</button>
@@ -933,6 +945,7 @@ function showDriveSetup(){
     cur.style.display = 'none';
     g0('drive-disconnect-btn').style.display = 'none';
   }
+  renderDriveBackupsList();
   g0('drive-setup').classList.add('open');
 }
 
@@ -1022,6 +1035,7 @@ async function driveLoad(isAuto){
     try{ const mt = await fetchDriveModifiedTime(); if(mt) driveKnownModifiedTime = mt; }catch(_){}
     hideUpdateBanner();
     startDrivePolling();
+    maybeAutoBackup();                 // einmal pro Session: heutiges Auto-Backup sicherstellen + alte ausdünnen
     if(isAuto){
       toast(`🔄 Aktualisiert — Änderungen von anderen übernommen (${db.length} Einträge, ${projects.length} Projekte)`,'ok');
     } else {
@@ -2611,6 +2625,218 @@ function closeModal(){ g0('dmodal').classList.remove('open'); detailId=null; }
 g0('dmodal').addEventListener('click',function(e){ if(e.target===this) closeModal(); });
 function editFromModal(){ const id=detailId; closeModal(); editEntry(id); }
 function delFromModal(){ const id=detailId; closeModal(); delEntry(id); }
+
+// ════════════════════════ DATEN-BACKUP (Glas + Projekte) ════════════════════════
+// Manuelles Voll-Backup als JSON-Datei + Wiederherstellung. Fotos sind NICHT enthalten
+// (sie bleiben als einzelne Drive-Dateien über die {id,n}-Verweise erhalten).
+function backupPayload(){
+  return {
+    _type: 'refloat-backup',
+    _version: 1,
+    _exportedAt: new Date().toISOString(),
+    counts: { glass: db.length, projects: projects.length },
+    glass: db,
+    projects: projects
+  };
+}
+function downloadBackup(){
+  try{
+    const blob = new Blob([JSON.stringify(backupPayload(), null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().slice(0,16).replace('T','_').replace(':','');
+    const a = document.createElement('a'); a.href = url; a.download = `refloat-backup-${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    toast(`Backup heruntergeladen (${db.length} Gläser, ${projects.length} Projekte).`,'ok');
+  }catch(e){ console.error(e); toast('Backup fehlgeschlagen: '+e.message,'err'); }
+}
+function restoreBackupFile(ev){
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = '';                 // gleicher Datei-Reupload soll erneut auslösen
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    let data;
+    try{ data = JSON.parse(e.target.result); }
+    catch(_){ toast('Datei ist kein gültiges Backup (kein JSON).','err'); return; }
+    // Akzeptiert {glass,projects} ODER ein reines Array (= nur Gläser, altes Format).
+    let g = null, pr = [];
+    if(Array.isArray(data)){ g = data; }
+    else if(data && typeof data === 'object'){ g = Array.isArray(data.glass)?data.glass:null; pr = Array.isArray(data.projects)?data.projects:[]; }
+    if(!Array.isArray(g)){ toast('Datei enthält keine erkennbaren Backup-Daten.','err'); return; }
+    const when = (data && data._exportedAt) ? new Date(data._exportedAt).toLocaleString('de-DE') : 'unbekannt';
+    const driveNote = (driveAccessToken && driveFileId) ? ' — auch in Drive (für das ganze Team)' : '';
+    if(!confirm(`Backup wiederherstellen?\n\nDas Backup enthält ${g.length} Gläser und ${pr.length} Projekte (erstellt: ${when}).\n\nACHTUNG: Der aktuelle Bestand (${db.length} Gläser, ${projects.length} Projekte) wird KOMPLETT ERSETZT${driveNote}.\n\nZur Sicherheit wird zuerst ein Backup des AKTUELLEN Standes heruntergeladen.`)) return;
+    try{ downloadBackup(); }catch(_){}            // Sicherheits-Backup des Ist-Standes
+    db = g; db.forEach(normalizeEntry);
+    projects = pr;
+    persist();                                    // localStorage + (falls verbunden) Drive
+    if(typeof filter === 'function') filter();
+    if(typeof renderProjectsList === 'function') renderProjectsList();
+    closeDriveSetup();
+    nav('list');
+    toast(`Wiederhergestellt: ${db.length} Gläser, ${projects.length} Projekte.`,'ok');
+  };
+  reader.onerror = ()=>toast('Datei konnte nicht gelesen werden.','err');
+  reader.readAsText(f);
+}
+
+// ── Automatische Drive-Backups (Schritt 2) ──
+// Täglich ein Backup in den Unterordner „ReFloat-Backups" (gleicher übergeordneter Ordner wie
+// refloat-data.json). Aufbewahrung gestaffelt: letzte 30 Tage täglich, älteres nur 1× pro Woche
+// (jeweils das jüngste der Woche). Das insgesamt neueste Backup wird NIE gelöscht.
+let driveBackupFolderId = null;
+let autoBackupRanThisSession = false;
+const BACKUP_FOLDER_NAME = 'ReFloat-Backups';
+const BACKUP_NAME_RE = /^refloat-backup-(\d{4}-\d{2}-\d{2})\.json$/;
+const BACKUP_KEEP_DAILY_DAYS = 30;
+const DAY_MS = 86400000;
+
+async function ensureBackupFolderId(){
+  if(driveBackupFolderId) return driveBackupFolderId;
+  if(!driveAccessToken || !driveFileId) return null;
+  const parentId = await ensurePhotoFolderId();           // Ordner der Datendatei
+  try{
+    let q = `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    if(parentId) q += ` and '${parentId}' in parents`;
+    const resp = await gapi.client.drive.files.list({ q, fields:'files(id,name)', pageSize:10 });
+    if(resp.result.files && resp.result.files.length){ driveBackupFolderId = resp.result.files[0].id; return driveBackupFolderId; }
+  }catch(e){ console.warn('Backup-Ordner-Suche fehlgeschlagen', e); }
+  try{
+    const meta = { name: BACKUP_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder' };
+    if(parentId) meta.parents = [parentId];
+    const resp = await gapi.client.drive.files.create({ resource: meta, fields:'id' });
+    driveBackupFolderId = resp.result.id; return driveBackupFolderId;
+  }catch(e){
+    console.warn('Backup-Ordner anlegen fehlgeschlagen — nutze Datenordner als Fallback', e);
+    driveBackupFolderId = parentId || null;               // Fallback: Backups neben Daten/Fotos (per Namensmuster gefiltert)
+    return driveBackupFolderId;
+  }
+}
+
+async function listDriveBackups(){
+  const folderId = await ensureBackupFolderId();
+  if(!folderId) return [];
+  const resp = await gapi.client.drive.files.list({
+    q: `'${folderId}' in parents and trashed=false`,
+    fields: 'files(id,name)', pageSize: 1000, orderBy: 'name'
+  });
+  const out = [];
+  (resp.result.files||[]).forEach(f=>{
+    const m = BACKUP_NAME_RE.exec(f.name);
+    if(m) out.push({ id:f.id, name:f.name, dateStr:m[1], dateMs:new Date(m[1]+'T00:00:00').getTime() });
+  });
+  out.sort((a,b)=>b.dateMs - a.dateMs);                   // neuste zuerst
+  return out;
+}
+
+// Montag (0) der Woche eines Datums als 'YYYY-MM-DD' (Wochen-Schlüssel, UTC-stabil).
+function backupWeekKey(dateMs){
+  const d = new Date(dateMs);
+  const dow = (d.getUTCDay()+6)%7;                        // 0=Montag … 6=Sonntag
+  return new Date(dateMs - dow*DAY_MS).toISOString().slice(0,10);
+}
+// REINE Funktion (lokal testbar): liefert {keepIds, deleteIds} nach der Staffel-Regel.
+function computeBackupRetention(backups, todayMs){
+  if(!backups || !backups.length) return { keepIds:[], deleteIds:[] };
+  const sorted = backups.slice().sort((a,b)=>b.dateMs - a.dateMs);
+  const newestId = sorted[0].id;                          // neuestes immer behalten
+  const threshold = todayMs - BACKUP_KEEP_DAILY_DAYS*DAY_MS;
+  const keep = new Set([newestId]);
+  const del = [];
+  const weekBest = new Map();                             // weekKey -> {id, dateMs}
+  for(const b of sorted){
+    if(b.id === newestId) continue;
+    if(b.dateMs >= threshold){ keep.add(b.id); continue; } // letzte 30 Tage: alles behalten
+    const wk = backupWeekKey(b.dateMs);                    // älter: pro Woche nur das jüngste
+    const cur = weekBest.get(wk);
+    if(!cur || b.dateMs > cur.dateMs){
+      if(cur) del.push(cur.id);
+      weekBest.set(wk, { id:b.id, dateMs:b.dateMs });
+    } else { del.push(b.id); }
+  }
+  weekBest.forEach(v=>keep.add(v.id));
+  return { keepIds:[...keep], deleteIds: del.filter(id=>!keep.has(id)) };
+}
+
+async function createDriveBackup(folderId, name){
+  const metadata = { name, mimeType:'application/json' };
+  if(folderId) metadata.parents = [folderId];
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', new Blob([JSON.stringify(backupPayload())], {type:'application/json'}));
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+    method:'POST', headers:{'Authorization':`Bearer ${driveAccessToken}`}, body: form
+  });
+  if(!r.ok) throw new Error('Backup-Upload HTTP '+r.status);
+  return await r.json();
+}
+
+async function pruneDriveBackups(backups){
+  const { deleteIds } = computeBackupRetention(backups, Date.now());
+  for(const id of deleteIds){
+    try{ await gapi.client.drive.files.delete({ fileId:id }); }
+    catch(e){ console.warn('Altes Backup löschen fehlgeschlagen', id, e); }
+  }
+  return deleteIds.length;
+}
+
+async function maybeAutoBackup(){
+  if(autoBackupRanThisSession) return;
+  if(!driveAccessToken || !driveFileId) return;
+  autoBackupRanThisSession = true;
+  try{
+    const folderId = await ensureBackupFolderId();
+    if(!folderId) return;
+    let backups = await listDriveBackups();
+    const todayName = 'refloat-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    if(!backups.some(b=>b.name===todayName)){
+      await createDriveBackup(folderId, todayName);
+      backups = await listDriveBackups();                 // inkl. dem heutigen
+    }
+    await pruneDriveBackups(backups);
+  }catch(e){ console.warn('Auto-Backup fehlgeschlagen', e); autoBackupRanThisSession = false; }
+}
+
+// Wiederherstellung aus einem Drive-Backup (gleiche sichere Ersetzen-Logik wie manuell).
+async function restoreDriveBackup(fileId, label){
+  if(!driveAccessToken){ toast('Drive nicht verbunden.','err'); return; }
+  if(!confirm(`Backup „${label}" wiederherstellen?\n\nDer aktuelle Bestand (${db.length} Gläser, ${projects.length} Projekte) wird KOMPLETT ERSETZT — auch in Drive (für das ganze Team).\n\nZur Sicherheit wird zuerst ein Backup des AKTUELLEN Standes heruntergeladen.`)) return;
+  try{
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers:{'Authorization':`Bearer ${driveAccessToken}`} });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    let g=null, pr=[];
+    if(Array.isArray(data)) g=data;
+    else if(data && typeof data==='object'){ g = Array.isArray(data.glass)?data.glass:null; pr = Array.isArray(data.projects)?data.projects:[]; }
+    if(!Array.isArray(g)){ toast('Backup-Datei nicht lesbar.','err'); return; }
+    try{ downloadBackup(); }catch(_){}
+    db = g; db.forEach(normalizeEntry); projects = pr;
+    persist();
+    if(typeof filter==='function') filter();
+    if(typeof renderProjectsList==='function') renderProjectsList();
+    closeDriveSetup(); nav('list');
+    toast(`Wiederhergestellt aus „${label}": ${db.length} Gläser, ${projects.length} Projekte.`,'ok');
+  }catch(e){ console.error(e); toast('Wiederherstellen fehlgeschlagen: '+e.message,'err'); }
+}
+
+// Backup-Liste im Drive-Dialog (asynchron befüllt).
+async function renderDriveBackupsList(){
+  const box = g0('drive-backups-list'); if(!box) return;
+  if(!driveAccessToken || !driveFileId){ box.innerHTML = '<div style="color:var(--subtext);font-size:.82rem">Mit Drive verbinden, um automatische Backups zu sehen.</div>'; return; }
+  box.innerHTML = '<div style="color:var(--subtext);font-size:.82rem">Lade Backups …</div>';
+  try{
+    const backups = await listDriveBackups();
+    if(!backups.length){ box.innerHTML = '<div style="color:var(--subtext);font-size:.82rem">Noch keine automatischen Backups. Das erste entsteht beim nächsten App-Start.</div>'; return; }
+    box.innerHTML = backups.map(b=>{
+      const d = new Date(b.dateMs).toLocaleDateString('de-DE',{weekday:'short',year:'numeric',month:'2-digit',day:'2-digit'});
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:.85rem">📅 ${d}</span>
+        <button class="btn btn-ghost btn-sm" onclick="restoreDriveBackup('${b.id}','${escapeHtml(b.dateStr)}')">Wiederherstellen</button>
+      </div>`;
+    }).join('');
+  }catch(e){ console.warn('Backup-Liste laden fehlgeschlagen', e); box.innerHTML = '<div style="color:var(--danger);font-size:.82rem">Backups konnten nicht geladen werden.</div>'; }
+}
 
 // ════════════════════════ CSV ════════════════════════
 function exportCSV(){
