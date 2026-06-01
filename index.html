@@ -3740,7 +3740,7 @@ async function submitProjectCreate(){
       w: r.w!=null?r.w:null, h: r.h!=null?r.h:null,
       coating: r.coating||null, color: r.color||null, qty: r.qty!=null?r.qty:null
     }));
-    // 3) Optional: Original-Datei nach Drive hochladen (gleicher Ordner wie Foto/JSON)
+    // 3) Optional: Original-Datei nach Drive hochladen (Unterordner „ReFloat-Anfragen")
     let sourceFile = null;
     if(wantSource){
       try{ sourceFile = await uploadSourceFileToDrive(matchSourceFile); }
@@ -3875,10 +3875,35 @@ function clearRematch(){
   const planBox = document.getElementById('m-plan'); if(planBox) planBox.innerHTML='';
 }
 
-// Lädt die Original-Anfrage-Datei (xlsx/csv) als Drive-File hoch — gleicher Ordner wie Foto/JSON.
+// Unterordner „ReFloat-Anfragen" für hochgeladene Original-Anfrage-Dateien (analog zum Backup-Ordner).
+let driveSourceFolderId = null;
+const SOURCE_FOLDER_NAME = 'ReFloat-Anfragen';
+async function ensureSourceFolderId(){
+  if(driveSourceFolderId) return driveSourceFolderId;
+  if(!driveAccessToken || !driveFileId) return null;
+  const parentId = await ensurePhotoFolderId();              // übergeordneter Ordner der Datendatei
+  try{
+    let q = `name='${SOURCE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    if(parentId) q += ` and '${parentId}' in parents`;
+    const resp = await gapi.client.drive.files.list({ q, fields:'files(id,name)', pageSize:10 });
+    if(resp.result.files && resp.result.files.length){ driveSourceFolderId = resp.result.files[0].id; return driveSourceFolderId; }
+  }catch(e){ console.warn('Anfragen-Ordner-Suche fehlgeschlagen', e); }
+  try{
+    const meta = { name: SOURCE_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder' };
+    if(parentId) meta.parents = [parentId];
+    const resp = await gapi.client.drive.files.create({ resource: meta, fields:'id' });
+    driveSourceFolderId = resp.result.id; return driveSourceFolderId;
+  }catch(e){
+    console.warn('Anfragen-Ordner anlegen fehlgeschlagen — nutze Datenordner als Fallback', e);
+    driveSourceFolderId = parentId || null;                  // Fallback: neben Daten/Fotos
+    return driveSourceFolderId;
+  }
+}
+
+// Lädt die Original-Anfrage-Datei (xlsx/csv) als Drive-File in den Unterordner „ReFloat-Anfragen" hoch.
 async function uploadSourceFileToDrive(file){
   if(!driveAccessToken) throw new Error('Drive nicht verbunden');
-  const parentId = await ensurePhotoFolderId();  // gleicher Ordner wie Fotos
+  const parentId = await ensureSourceFolderId();  // eigener Unterordner „ReFloat-Anfragen"
   const metadata = {name: file.name, mimeType: file.type || 'application/octet-stream'};
   if(parentId) metadata.parents = [parentId];
   const form = new FormData();
