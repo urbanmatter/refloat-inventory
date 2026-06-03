@@ -166,8 +166,22 @@ input.ro,input[readonly]{background:var(--bg);color:var(--subtext);cursor:not-al
 .photo-thumb img{width:100%;height:100%;object-fit:cover}
 .photo-rm{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:21px;height:21px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
 
+/* ── Maß-Tabelle (Gruppen-Erfassung) ── */
+.grp-num{background:var(--secondary)}
+.hint{font-weight:400;text-transform:none;letter-spacing:0;color:var(--subtext);font-size:.72rem}
+.size-rows{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.size-row{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.sr-grid{display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr auto;gap:12px;align-items:end}
+.sr-badge{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.76rem;color:var(--secondary);background:var(--card);border:1px solid var(--border);padding:7px 10px;border-radius:9px;font-weight:600;white-space:nowrap;margin-bottom:1px}
+.sr-actions{display:flex;gap:6px;align-items:center}
+.sr-actions .btn-x{width:34px;height:34px;font-size:.95rem}
+@media(max-width:760px){.sr-grid{grid-template-columns:1fr 1fr}.sr-badge{grid-column:1/-1}.sr-actions{grid-column:1/-1;justify-content:flex-end}}
+.add-row-btn{padding:8px 14px;font-size:.82rem}
+/* Im Bearbeiten-Modus: Gruppen-/Maß-Hinzufügen und Entfernen verstecken */
+.editing #addGroupBtn,.editing .add-row-btn,.editing .grp-x,.editing .sr-dup,.editing .sr-rm{display:none !important}
+
 .form-actions{display:flex;gap:10px;flex-wrap:wrap}
-#addPosBtn{width:100%;justify-content:center;margin-bottom:18px;padding:14px}
+#addGroupBtn{width:100%;justify-content:center;margin-bottom:18px;padding:14px}
 
 /* ── List toolbar ── */
 .sec-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px}
@@ -576,7 +590,7 @@ tr:last-child td{border-bottom:none}
 <section class="section" id="section-form">
   <div class="page-head">
     <h1 id="formH1">Neue Erfassung</h1>
-    <p>Projektdaten einmal oben eingeben, dann beliebig viele Glaspositionen erfassen.</p>
+    <p>Projektdaten einmal oben eingeben. Pro Glasaufbau eine <strong>Gruppe</strong> anlegen und darunter beliebig viele <strong>Maße</strong> erfassen — jedes Maß wird ein eigener Bestand-Eintrag.</p>
   </div>
 
   <!-- Projekt-Header -->
@@ -598,9 +612,9 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
 
-  <!-- Positionen -->
+  <!-- Glas-Gruppen -->
   <div id="positions"></div>
-  <button class="btn btn-soft" id="addPosBtn" onclick="addPosition()">+ Position hinzufügen</button>
+  <button class="btn btn-soft" id="addGroupBtn" onclick="addGroup()">+ Weitere Gruppe (anderer Aufbau)</button>
 
   <!-- Aktionen -->
   <div class="card form-actions">
@@ -1290,7 +1304,9 @@ const D_ISO=[3,4,5,6,8,10,12], D_VSG=[3,4,5,6,8,10,12], D_ESG=[4,5,6,8,10,12];
 // ════════════════════════ STATE ════════════════════════
 let db=[], fd=[], view='t', detailId=null, detailPhotos=[];
 let projects=[];                     // Projekt-Sammlung (siehe Schema unten)
-let positions=[], photoStore={}, fixedIds={}, editingId=null, uidSeq=1;
+// groups: Array von {uid, rows:[rowUid,...]}. Eine Gruppe = ein Glasaufbau (gemeinsame Felder im Gruppen-Kopf);
+// jede row = ein Maß (Breite/Höhe/Stückzahl + Fotos) und wird beim Speichern ein eigener Bestand-Eintrag.
+let groups=[], photoStore={}, fixedIds={}, editingId=null, uidSeq=1;
 let currentProjectId=null;           // aktuelle Projekt-Detailansicht
 
 // ─── Reservierungs-Buchhaltung ───
@@ -1941,7 +1957,7 @@ function now(){ return new Date().toISOString(); }
 function rGet(k){ return RSTRAT.find(r=>r.k===k); }
 function rName(k){ const r=rGet(k); return r?r.label:''; }
 function rTag(k){ const r=rGet(k); return r?`<span class="rmini">${r.icon} ${r.label}</span>`:'–'; }
-function opt(arr,sel){ return arr.map(o=>`<option ${String(o)===String(sel)?'selected':''}>${o===''?'Glastyp wählen …':o}</option>`).join(''); }
+function opt(arr,sel){ return arr.map(o=>`<option value="${o}" ${String(o)===String(sel)?'selected':''}>${o===''?'Glastyp wählen …':o}</option>`).join(''); }
 function dopts(arr){ return arr.map(x=>`<option>${x}</option>`).join(''); }
 
 function nextNum(type,year){
@@ -1981,91 +1997,147 @@ function initFilters(){
   RSTRAT.forEach(r=>{ const o=document.createElement('option'); o.value=r.k; o.textContent=r.icon+' '+r.label; fr.append(o); });
 }
 
-// ════════════════════════ POSITIONS ════════════════════════
-function posCardHTML(uid){
-  return `<div class="card pos-card" id="pos_${uid}" data-uid="${uid}">
+// ════════════════════════ GRUPPEN & MASS-ZEILEN ════════════════════════
+// Eine Gruppe (Glas-Gruppe) hält die gemeinsamen Felder eines Glasaufbaus (Glastyp, Aufbau, Farbe,
+// Beschichtung, Glasdicke, R-Strategie, Lager/Preis/Status, Tags, Notizen). Darunter liegen die
+// Maß-Zeilen — jede mit Breite/Höhe/Stückzahl + eigenen Fotos. Beim Speichern wird jede Maß-Zeile
+// ein eigener Bestand-Eintrag, der die Gruppen-Felder übernimmt.
+function groupCardHTML(guid){
+  return `<div class="card grp-card" id="grp_${guid}" data-guid="${guid}">
     <div class="pos-head">
-      <div class="pos-badges"><span class="pos-num">P1</span><span class="pos-id" id="p_${uid}_idbadge">ID: —</span></div>
-      <button class="btn-x" title="Position entfernen" onclick="removePosition('${uid}')">✕</button>
+      <div class="pos-badges"><span class="pos-num grp-num">Gruppe A</span><span class="pos-id" id="p_${guid}_idbadge">Glastyp wählen …</span></div>
+      <button class="btn-x grp-x" title="Gruppe entfernen" onclick="removeGroup('${guid}')">✕</button>
     </div>
     <div class="fgrid">
-      <div class="fg"><label>Glastyp</label><select id="p_${uid}_type" data-role="type">${opt(TYPE_OPTS,'')}</select></div>
-      <div class="fg"><label>Farbe / Tönung</label><select id="p_${uid}_color">${dopts(COLOR_OPTS)}</select></div>
-      <div class="fg"><label>Beschichtung (Kurzinfo)</label><select id="p_${uid}_coat">${dopts(COAT_OPTS)}</select></div>
+      <div class="fg"><label>Glastyp</label><select id="p_${guid}_type" data-role="type">${opt(TYPE_OPTS,'')}</select></div>
+      <div class="fg"><label>Farbe / Tönung</label><select id="p_${guid}_color">${dopts(COLOR_OPTS)}</select></div>
+      <div class="fg"><label>Beschichtung (Kurzinfo)</label><select id="p_${guid}_coat">${dopts(COAT_OPTS)}</select></div>
     </div>
-    <div id="p_${uid}_build"></div>
-    <div class="sub-title">Abmessungen &amp; Gewicht</div>
+    <div id="p_${guid}_build"></div>
     <div class="fgrid">
-      <div class="fg"><label>Breite (mm)</label><input type="number" id="p_${uid}_w" min="0" placeholder="1200"></div>
-      <div class="fg"><label>Höhe (mm)</label><input type="number" id="p_${uid}_h" min="0" placeholder="2000"></div>
-      <div class="fg"><label>Glasdicke ges. (mm)</label><input type="number" id="p_${uid}_d" min="0" step="0.1" placeholder="8"></div>
-      <div class="fg"><label>Gewicht (kg) · automatisch</label><input type="number" id="p_${uid}_wt" class="ro" readonly value="0.0"></div>
-      <div class="fg"><label>Stückzahl</label><input type="number" id="p_${uid}_qty" min="1" value="1"></div>
-    </div>
-    <div class="sub-title">Lager &amp; Preis</div>
-    <div class="fgrid">
-      <div class="fg"><label>Lagerort</label><input type="text" id="p_${uid}_loc" placeholder="Halle A, Regal 3"></div>
-      <div class="fg"><label>Preis (€)</label><input type="number" id="p_${uid}_price" min="0" step="0.01" placeholder="0.00"></div>
-      <div class="fg"><label>Status</label><select id="p_${uid}_status">${dopts(STATUS_OPTS)}</select></div>
+      <div class="fg"><label>Glasdicke gesamt (mm)</label><input type="number" id="p_${guid}_d" data-role="gdim" min="0" step="0.1" placeholder="8"></div>
     </div>
     <div class="sub-title">R-Strategie · Kreislaufwirtschaft</div>
-    <div class="rstrat" id="p_${uid}_rstrat"></div>
-    <input type="hidden" id="p_${uid}_rval">
+    <div class="rstrat" id="p_${guid}_rstrat"></div>
+    <input type="hidden" id="p_${guid}_rval">
+    <div class="sub-title">Lager · Preis · Status</div>
+    <div class="fgrid">
+      <div class="fg"><label>Lagerort</label><input type="text" id="p_${guid}_loc" placeholder="Halle A, Regal 3"></div>
+      <div class="fg"><label>Preis (€)</label><input type="number" id="p_${guid}_price" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="fg"><label>Status</label><select id="p_${guid}_status">${dopts(STATUS_OPTS)}</select></div>
+    </div>
     <div class="sub-title">Zusatzinformationen</div>
     <div class="fgrid">
-      <div class="fg spanall"><label>Tags (kommagetrennt)</label><input type="text" id="p_${uid}_tags" placeholder="historisch, großformatig"></div>
-      <div class="fg spanall"><label>Notizen</label><textarea id="p_${uid}_notes" placeholder="Besonderheiten, Hinweise …"></textarea></div>
+      <div class="fg spanall"><label>Tags (kommagetrennt)</label><input type="text" id="p_${guid}_tags" placeholder="historisch, großformatig"></div>
+      <div class="fg spanall"><label>Notizen</label><textarea id="p_${guid}_notes" placeholder="Besonderheiten, Hinweise …"></textarea></div>
     </div>
-    <div class="sub-title">Fotos</div>
-    <div class="upload-zone" onclick="document.getElementById('p_${uid}_file').click()">📷 &nbsp;Fotos klicken oder hineinziehen
-      <input type="file" id="p_${uid}_file" multiple accept="image/*" style="display:none" onchange="addPhotos('${uid}',event)"></div>
-    <div class="photo-grid" id="p_${uid}_pgrid"></div>
+    <div class="sub-title">Maße &amp; Stückzahl <span class="hint">— jede Zeile wird ein eigener Bestand-Eintrag</span></div>
+    <div class="size-rows" id="grp_${guid}_rows"></div>
+    <button class="btn btn-soft add-row-btn" onclick="addRow('${guid}')">+ Maß hinzufügen</button>
   </div>`;
 }
 
-function addPosition(data){
-  const uid='u'+(uidSeq++);
-  positions.push(uid); photoStore[uid]=[];
+function rowHTML(guid,rid){
+  return `<div class="size-row" id="row_${rid}" data-rid="${rid}" data-guid="${guid}">
+    <div class="sr-grid">
+      <span class="sr-badge" id="p_${rid}_idbadge">P1</span>
+      <div class="fg"><label>Breite (mm)</label><input type="number" id="p_${rid}_w" data-role="dim" min="0" placeholder="1200"></div>
+      <div class="fg"><label>Höhe (mm)</label><input type="number" id="p_${rid}_h" data-role="dim" min="0" placeholder="2000"></div>
+      <div class="fg"><label>Stückzahl</label><input type="number" id="p_${rid}_qty" min="1" value="1"></div>
+      <div class="fg"><label>Gewicht (kg)</label><input type="number" id="p_${rid}_wt" class="ro" readonly value="0.0"></div>
+      <div class="sr-actions">
+        <button class="btn-x" type="button" title="Fotos zu diesem Maß" onclick="document.getElementById('p_${rid}_file').click()">📷</button>
+        <button class="btn-x sr-dup" type="button" title="Maß duplizieren" onclick="dupRow('${rid}')">⧉</button>
+        <button class="btn-x sr-rm" type="button" title="Maß entfernen" onclick="removeRow('${rid}')">✕</button>
+      </div>
+    </div>
+    <input type="file" id="p_${rid}_file" multiple accept="image/*" style="display:none" onchange="addPhotos('${rid}',event)">
+    <div class="photo-grid" id="p_${rid}_pgrid"></div>
+  </div>`;
+}
+
+function addGroup(data){
+  const guid='u'+(uidSeq++);
+  groups.push({uid:guid, rows:[]});
   const wrap=document.createElement('div');
-  wrap.innerHTML=posCardHTML(uid);
+  wrap.innerHTML=groupCardHTML(guid);
   g0('positions').append(wrap.firstElementChild);
-  renderRStrat(uid, data?data.rStrat:'');
-  // drag & drop
-  const dz=document.querySelector('#pos_'+uid+' .upload-zone');
-  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
-  dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
-  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith('image/')).forEach(f=>compress(uid,f));});
-  if(data){ fillPosition(uid,data); } else { renderBuild(uid,''); }
-  renumber(); recalcWeight(uid);
-  return uid;
+  renderRStrat(guid, data?data.rStrat:'');
+  if(data){ fillGroupBase(guid,data); } else { renderBuild(guid,''); }
+  addRow(guid);            // jede Gruppe startet mit einer Maß-Zeile
+  renumberGroups(); recalcGroup(guid);
+  return guid;
 }
 
-function removePosition(uid){
-  if(positions.length<=1){ toast('Mindestens eine Position muss vorhanden sein.','err'); return; }
-  g0('pos_'+uid).remove();
-  positions=positions.filter(u=>u!==uid);
-  delete photoStore[uid];
-  renumber();
+function removeGroup(guid){
+  if(groups.length<=1){ toast('Mindestens eine Gruppe muss vorhanden sein.','err'); return; }
+  const grp=groups.find(g=>g.uid===guid); if(!grp) return;
+  grp.rows.forEach(rid=>delete photoStore[rid]);
+  g0('grp_'+guid).remove();
+  groups=groups.filter(g=>g.uid!==guid);
+  renumberGroups();
 }
 
-function renumber(){
-  const showX = positions.length>1 && !editingId;
-  positions.forEach((uid,i)=>{
-    const card=g0('pos_'+uid);
-    card.querySelector('.pos-num').textContent='P'+(i+1);
-    const x=card.querySelector('.btn-x'); if(x) x.style.display=showX?'':'none';
-    updatePosId(uid);
-  });
+function addRow(guid){
+  const grp=groups.find(g=>g.uid===guid); if(!grp) return;
+  const rid='u'+(uidSeq++);
+  grp.rows.push(rid); photoStore[rid]=[];
+  const wrap=document.createElement('div');
+  wrap.innerHTML=rowHTML(guid,rid);
+  g0('grp_'+guid+'_rows').append(wrap.firstElementChild);
+  renumberGroups(); recalcRowWeight(guid,rid);
+  return rid;
 }
 
-function updatePosId(uid){
-  const badge=g0('p_'+uid+'_idbadge'); if(!badge) return;
-  if(fixedIds[uid]){ badge.textContent=fixedIds[uid]; return; }
-  const type=gid(uid,'type').value;
-  const order=positions.indexOf(uid)+1;
-  if(!type){ badge.textContent='ID: —'; return; }
+function dupRow(rid){
+  const grp=groups.find(g=>g.rows.includes(rid)); if(!grp) return;
+  const idx=grp.rows.indexOf(rid);
+  const newRid='u'+(uidSeq++);
+  grp.rows.splice(idx+1,0,newRid); photoStore[newRid]=[];
+  const wrap=document.createElement('div');
+  wrap.innerHTML=rowHTML(grp.uid,newRid);
+  g0('row_'+rid).after(wrap.firstElementChild);
+  // Maße + Stückzahl übernehmen (Fotos NICHT — die gehören zur konkreten Scheibe)
+  gid(newRid,'w').value=gid(rid,'w').value;
+  gid(newRid,'h').value=gid(rid,'h').value;
+  gid(newRid,'qty').value=gid(rid,'qty').value;
+  renumberGroups(); recalcRowWeight(grp.uid,newRid);
+}
+
+function removeRow(rid){
+  const grp=groups.find(g=>g.rows.includes(rid)); if(!grp) return;
+  if(grp.rows.length<=1){ toast('Jede Gruppe braucht mindestens ein Maß.','err'); return; }
+  g0('row_'+rid).remove();
+  grp.rows=grp.rows.filter(r=>r!==rid);
+  delete photoStore[rid];
+  renumberGroups();
+}
+
+// Setzt Gruppen-Label (A, B, C …), ID-Vorschau pro Maß-Zeile und blendet Entfernen-Buttons passend ein.
+function renumberGroups(){
   const year=g0('hYear').value;
-  badge.textContent=`${ABBR[type]}-${year}-${pad3(nextNum(type,year))}-P${order}`;
+  let order=0;
+  groups.forEach((grp,gi)=>{
+    const gcard=g0('grp_'+grp.uid); if(!gcard) return;
+    const numEl=gcard.querySelector('.grp-num'); if(numEl) numEl.textContent='Gruppe '+String.fromCharCode(65+gi);
+    const gx=gcard.querySelector('.grp-x'); if(gx) gx.style.display=(groups.length>1)?'':'none';
+    const type=gid(grp.uid,'type').value;
+    // Gruppen-Badge: Glastyp-ID-Präfix als Vorschau
+    const gbadge=g0('p_'+grp.uid+'_idbadge');
+    if(gbadge) gbadge.textContent = type ? `${ABBR[type]}-${year}-${pad3(nextNum(type,year))}` : 'Glastyp wählen …';
+    const showRm = grp.rows.length>1;
+    grp.rows.forEach(rid=>{
+      order++;
+      const badge=g0('p_'+rid+'_idbadge');
+      if(badge){
+        if(fixedIds[rid]) badge.textContent=fixedIds[rid];
+        else if(!type) badge.textContent='P'+order;
+        else badge.textContent=`${ABBR[type]}-${year}-${pad3(nextNum(type,year))}-P${order}`;
+      }
+      const rmBtn=g0('row_'+rid) && g0('row_'+rid).querySelector('.sr-rm');
+      if(rmBtn) rmBtn.style.display=showRm?'':'none';
+    });
+  });
 }
 
 // ════════════════════════ GLASS BUILD ════════════════════════
@@ -2170,14 +2242,25 @@ function fillBuild(uid,build){
 }
 
 // ════════════════════════ WEIGHT ════════════════════════
-function recalcWeight(uid){
-  const type=gid(uid,'type').value;
-  const b=collectBuild(uid,type);
-  let Dg = b ? b.glassMm : (+gid(uid,'d').value||0);
-  if(b){ const dEl=gid(uid,'d'); if(dEl) dEl.value = Dg || ''; }
-  const w=+gid(uid,'w').value||0, h=+gid(uid,'h').value||0;
+// Gesamt-Glasdicke der Gruppe: aus dem Aufbau (ISO/VSG/ESG) abgeleitet, sonst manuell aus dem d-Feld.
+// Aktualisiert bei Aufbau-Typen das (schreibgeschützte) Glasdicke-Feld der Gruppe.
+function groupGlassMm(guid){
+  const type=gid(guid,'type').value;
+  const b=collectBuild(guid,type);
+  const Dg = b ? b.glassMm : (+gid(guid,'d').value||0);
+  if(b){ const dEl=gid(guid,'d'); if(dEl) dEl.value = Dg || ''; }
+  return Dg;
+}
+function rowWeight(Dg,rid){
+  const w=+gid(rid,'w').value||0, h=+gid(rid,'h').value||0;
   const kg=(w/1000)*(h/1000)*(Dg/1000)*2500;
-  gid(uid,'wt').value = (kg>0?kg:0).toFixed(1);
+  const wtEl=gid(rid,'wt'); if(wtEl) wtEl.value=(kg>0?kg:0).toFixed(1);
+}
+function recalcRowWeight(guid,rid){ rowWeight(groupGlassMm(guid),rid); }
+function recalcGroup(guid){
+  const grp=groups.find(g=>g.uid===guid); if(!grp) return;
+  const Dg=groupGlassMm(guid);
+  grp.rows.forEach(rid=>rowWeight(Dg,rid));
 }
 
 // ════════════════════════ R-STRATEGY ════════════════════════
@@ -2214,47 +2297,60 @@ function drawPhotos(uid){
 function rmPhoto(uid,i){ photoStore[uid].splice(i,1); drawPhotos(uid); }
 
 // ════════════════════════ FILL / SAVE / RESET ════════════════════════
-function fillPosition(uid,e){
-  const s=(suf,v)=>{const el=gid(uid,suf); if(el!=null&&v!=null) el.value=v;};
+// Füllt den Gruppen-Kopf aus einem Bestand-Eintrag (Bearbeiten-Modus).
+function fillGroupBase(guid,e){
+  const s=(suf,v)=>{const el=gid(guid,suf); if(el!=null&&v!=null) el.value=v;};
   s('type',e.type);
-  renderBuild(uid,e.type);
-  fillBuild(uid,e.build);
+  renderBuild(guid,e.type);
+  fillBuild(guid,e.build);
   s('color',e.color); s('coat',e.coating);
-  s('w',e.w||''); s('h',e.h||''); s('d',e.d||'');
-  s('qty',e.qty||1); s('loc',e.loc||''); s('price',e.price||'');
-  s('status',e.status||'Verfügbar');
+  s('d',e.d||e.glassMm||'');
+  s('loc',e.loc||''); s('price',e.price||''); s('status',e.status||'Verfügbar');
   s('tags',(e.tags||[]).join(', ')); s('notes',e.notes||'');
-  g0('p_'+uid+'_rval').value=e.rStrat||'';
-  renderRStrat(uid,e.rStrat||'');
-  photoStore[uid]=(e.photos||[]).map((p,i)=>{
+  g0('p_'+guid+'_rval').value=e.rStrat||'';
+  renderRStrat(guid,e.rStrat||'');
+}
+// Füllt eine Maß-Zeile (Breite/Höhe/Stückzahl + Fotos) aus einem Bestand-Eintrag.
+function fillRow(rid,e){
+  const s=(suf,v)=>{const el=gid(rid,suf); if(el!=null&&v!=null) el.value=v;};
+  s('w',e.w||''); s('h',e.h||''); s('qty',e.qty||1);
+  photoStore[rid]=(e.photos||[]).map((p,i)=>{
     if(isBase64Photo(p)) return {d:p, n:'Foto '+(i+1)};
     if(isDrivePhotoRef(p)){
       const item={d: photoCache[p.id]||PHOTO_PLACEHOLDER, n: p.n||'Foto '+(i+1), id: p.id};
       if(!photoCache[p.id]){
-        fetchPhotoFromDrive(p.id).then(url=>{ item.d=url; if(positions.includes(uid)) drawPhotos(uid); }).catch(()=>{});
+        fetchPhotoFromDrive(p.id).then(url=>{ item.d=url; if(g0('p_'+rid+'_pgrid')) drawPhotos(rid); }).catch(()=>{});
       }
       return item;
     }
     return {d: PHOTO_PLACEHOLDER, n: 'Foto '+(i+1)};
   });
-  drawPhotos(uid);
-  recalcWeight(uid);
+  drawPhotos(rid);
 }
 
-function collectPosition(uid,base){
-  const type=gid(uid,'type').value;
-  const build=collectBuild(uid,type);
-  const w=+gid(uid,'w').value||0, h=+gid(uid,'h').value||0;
-  const Dg = build ? build.glassMm : (+gid(uid,'d').value||0);
+// Liest die gemeinsamen Felder einer Gruppe aus.
+function collectGroupBase(guid){
+  const type=gid(guid,'type').value;
+  const build=collectBuild(guid,type);
+  const Dg = build ? build.glassMm : (+gid(guid,'d').value||0);
+  return {
+    type, build, glassMm:Dg,
+    color:gid(guid,'color').value, coating:gid(guid,'coat').value,
+    status:gid(guid,'status').value,
+    loc:gid(guid,'loc').value.trim(), price:+gid(guid,'price').value||0,
+    tags:gid(guid,'tags').value.split(',').map(t=>t.trim()).filter(Boolean),
+    notes:gid(guid,'notes').value.trim(), rStrat:gid(guid,'rval').value||''
+  };
+}
+// Baut aus Gruppen-Basis + Maß-Zeile + ID-Feldern einen vollständigen Bestand-Eintrag.
+function collectRow(rid,base,idfields){
+  const w=+gid(rid,'w').value||0, h=+gid(rid,'h').value||0, Dg=base.glassMm;
   const wt = (w&&h&&Dg) ? +((w/1000)*(h/1000)*(Dg/1000)*2500).toFixed(1) : 0;
-  return Object.assign({},base,{
-    type, build, glassMm:Dg, w, h, d:Dg, wt,
-    color:gid(uid,'color').value, coating:gid(uid,'coat').value,
-    qty:+gid(uid,'qty').value||1, loc:gid(uid,'loc').value.trim(),
-    price:+gid(uid,'price').value||0, status:gid(uid,'status').value,
-    tags:gid(uid,'tags').value.split(',').map(t=>t.trim()).filter(Boolean),
-    notes:gid(uid,'notes').value.trim(), rStrat:gid(uid,'rval').value||'',
-    photos:(photoStore[uid]||[]).map(p=>p.d)
+  return Object.assign({},idfields,{
+    type:base.type, build:base.build, glassMm:Dg, w, h, d:Dg, wt,
+    color:base.color, coating:base.coating,
+    qty:+gid(rid,'qty').value||1, loc:base.loc, price:base.price, status:base.status,
+    tags:base.tags, notes:base.notes, rStrat:base.rStrat
   });
 }
 
@@ -2285,19 +2381,23 @@ async function save(){
   if(saving) return;
   const building=v0('hBuilding');
   if(!building){ toast('Bitte Herkunftsgebäude angeben.','err'); return; }
-  for(const uid of positions){ if(!gid(uid,'type').value){ toast('Bitte Glastyp für jede Position wählen.','err'); return; } }
+  for(let gi=0;gi<groups.length;gi++){
+    if(!gid(groups[gi].uid,'type').value){ toast('Bitte Glastyp für Gruppe '+String.fromCharCode(65+gi)+' wählen.','err'); return; }
+  }
   const year=g0('hYear').value, address=v0('hAddress');
 
   saving=true;
-  const totalPhotos=positions.reduce((n,uid)=>n+(photoStore[uid]||[]).filter(p=>!p.id).length,0);
+  const allRows=()=>groups.flatMap(g=>g.rows);
+  const totalPhotos=allRows().reduce((n,rid)=>n+(photoStore[rid]||[]).filter(p=>!p.id).length,0);
   if(totalPhotos>0 && driveAccessToken && driveFileId) toast(`Lade ${totalPhotos} Foto(s) hoch…`,'ok');
 
   try{
     if(editingId){
-      const e=db.find(x=>x.id===editingId); const uid=positions[0];
+      const e=db.find(x=>x.id===editingId);
+      const guid=groups[0].uid, rid=groups[0].rows[0];
       const oldPhotos=e.photos||[];
-      const newPhotos=await processPhotosForSave(uid);
-      Object.assign(e, collectPosition(uid,{id:editingId,projId:e.projId,projLabel:building,pos:e.pos,building,address,year}));
+      const newPhotos=await processPhotosForSave(rid);
+      Object.assign(e, collectRow(rid, collectGroupBase(guid), {id:editingId,projId:e.projId,projLabel:building,pos:e.pos,building,address,year}));
       e.photos=newPhotos;
       // Delete photos that were removed in the edit
       const keepIds=new Set(newPhotos.filter(isDrivePhotoRef).map(p=>p.id));
@@ -2306,18 +2406,27 @@ async function save(){
     }
 
     const projId='PRJ-'+year+'-'+pad4(nextProj(year));
+    // Laufende Nummer pro Glastyp (Positionen desselben Typs teilen sich die Nummer, vgl. Logik-Entscheidung 1)
     const typeBase={};
-    positions.forEach(uid=>{ const t=gid(uid,'type').value; if(!(t in typeBase)) typeBase[t]=nextNum(t,year); });
-    for(let i=0;i<positions.length;i++){
-      const uid=positions[i], t=gid(uid,'type').value, order=i+1;
-      const id=`${ABBR[t]}-${year}-${pad3(typeBase[t])}-P${order}`;
-      const entry=collectPosition(uid,{id,projId,projLabel:building,pos:order,building,address,year});
-      entry.photos=await processPhotosForSave(uid);
-      entry.at=now(); entry.upd=now();
-      db.push(entry);
+    groups.forEach(g=>{ const t=gid(g.uid,'type').value; if(!(t in typeBase)) typeBase[t]=nextNum(t,year); });
+    let order=0, saved=0;
+    for(const g of groups){
+      const base=collectGroupBase(g.uid), t=base.type;
+      for(const rid of g.rows){
+        const w=+gid(rid,'w').value||0, h=+gid(rid,'h').value||0;
+        if(w<=0 && h<=0) continue;   // komplett leere Maß-Zeilen überspringen
+        order++;
+        const id=`${ABBR[t]}-${year}-${pad3(typeBase[t])}-P${order}`;
+        const entry=collectRow(rid, base, {id,projId,projLabel:building,pos:order,building,address,year});
+        entry.photos=await processPhotosForSave(rid);
+        entry.at=now(); entry.upd=now();
+        db.push(entry);
+        saved++;
+      }
     }
+    if(saved===0){ toast('Bitte mindestens ein Maß (Breite/Höhe) angeben.','err'); saving=false; return; }
     persist();
-    toast(positions.length+' Position(en) gespeichert.','ok');
+    toast(saved+' Position(en) gespeichert.','ok');
     resetForm(); nav('list');
   } finally {
     saving=false;
@@ -2325,12 +2434,12 @@ async function save(){
 }
 
 function resetForm(skip){
-  editingId=null; fixedIds={}; positions=[]; photoStore={};
+  editingId=null; fixedIds={}; groups=[]; photoStore={};
   g0('positions').innerHTML='';
   g0('hBuilding').value=''; g0('hAddress').value=''; g0('hYear').selectedIndex=0;
   g0('formH1').textContent='Neue Erfassung';
-  g0('addPosBtn').style.display='';
-  if(!skip) addPosition();
+  g0('section-form').classList.remove('editing');
+  if(!skip) addGroup();
 }
 
 // ════════════════════════ EDIT / DELETE ════════════════════════
@@ -2342,10 +2451,12 @@ function editEntry(id){
   g0('hBuilding').value=e.building||e.projLabel||'';
   g0('hAddress').value=e.address||'';
   if(e.year) g0('hYear').value=e.year;
-  const uid=addPosition(e);
-  fixedIds[uid]=e.id;
-  g0('addPosBtn').style.display='none';
-  renumber();
+  const guid=addGroup(e);                 // füllt den Gruppen-Kopf + legt eine Maß-Zeile an
+  const rid=groups.find(g=>g.uid===guid).rows[0];
+  fillRow(rid,e);
+  fixedIds[rid]=e.id;
+  g0('section-form').classList.add('editing');  // blendet Gruppen-/Maß-Hinzufügen + Entfernen aus
+  renumberGroups(); recalcGroup(guid);
   nav('form');
 }
 function delEntry(id){
@@ -4225,15 +4336,20 @@ function matchInitDnD(){
 // ════════════════════════ EVENTS ════════════════════════
 const posBox=g0('positions');
 posBox.addEventListener('change',e=>{
-  const card=e.target.closest('.pos-card'); if(!card) return;
-  const uid=card.dataset.uid, role=e.target.dataset.role;
-  if(role==='type'){ renderBuild(uid,e.target.value); updatePosId(uid); recalcWeight(uid); return; }
-  if(role==='coatToggle'){ const i=e.target.dataset.layer; g0('p_'+uid+'_l'+i+'_cf').style.display=e.target.checked?'block':'none'; return; }
-  if(role==='layerCount'){ renderLamLayers(uid,+e.target.value); recalcWeight(uid); return; }
-  recalcWeight(uid);
+  const grp=e.target.closest('.grp-card'); if(!grp) return;
+  const guid=grp.dataset.guid, role=e.target.dataset.role;
+  if(role==='type'){ renderBuild(guid,e.target.value); recalcGroup(guid); renumberGroups(); return; }
+  if(role==='coatToggle'){ const i=e.target.dataset.layer; g0('p_'+guid+'_l'+i+'_cf').style.display=e.target.checked?'block':'none'; recalcGroup(guid); return; }
+  if(role==='layerCount'){ renderLamLayers(guid,+e.target.value); recalcGroup(guid); return; }
+  recalcGroup(guid);   // Aufbau-Lagen-Dicke o.ä. geändert → Gewichte neu
 });
-posBox.addEventListener('input',e=>{ const card=e.target.closest('.pos-card'); if(card) recalcWeight(card.dataset.uid); });
-g0('hYear').addEventListener('change',renumber);
+posBox.addEventListener('input',e=>{
+  const row=e.target.closest('.size-row');
+  if(row){ recalcRowWeight(row.dataset.guid, row.dataset.rid); return; }
+  const grp=e.target.closest('.grp-card');
+  if(grp && e.target.dataset.role==='gdim') recalcGroup(grp.dataset.guid);  // manuelle Glasdicke (Float/Sonstiges)
+});
+g0('hYear').addEventListener('change',renumberGroups);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeModal(); closeLB(); } });
 
 // ════════════════════════ INIT ════════════════════════
