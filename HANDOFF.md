@@ -11,7 +11,7 @@ Du bist ein erfahrener Full-Stack-Entwickler und hilfst mir (Gründer in der Bau
 - **Hosting:** GitHub Pages (kostenlos, automatisch bei Push auf `main`)
 
 ## Technischer Stand
-- **Eine einzige Datei:** `index.html` (HTML + CSS + JavaScript inline, ~285 KB inkl. eingebettetem Base64-Icon)
+- **Eine einzige Datei:** `index.html` (HTML + CSS + JavaScript inline, ~320 KB inkl. eingebettetem Base64-Icon; seit Phase 10 mit Produktions-Twin)
 - **Lokaler Speicherort:** `C:\Users\sebas\Desktop\Claude Projekte\ReFloat Inventory\`
 - **Datenspeicher:**
   - **Primär:** Google Drive (`refloat-data.json`) — Team-Sync
@@ -215,6 +215,18 @@ Behebt die Reibung bei vielen ähnlichen Positionen: In Gebäuden gibt es oft Gl
 - **Mitbehobener Altbug (`opt()`):** Die Platzhalter-Option „Glastyp wählen …" hatte **kein `value`-Attribut** → ihr Wert war der Anzeigetext (truthy). Folge im Altcode: die „Glastyp wählen"-Pflichtprüfung beim Speichern lief still durch und die ID-Vorschau zeigte „undefined-…". `opt()` setzt jetzt explizit `value="<typ>"` (Platzhalter → `""`), womit leerer Typ wieder als „nicht gewählt" erkannt wird.
 - **Lokal verifiziert (statischer Preview, ohne Drive):** kein JS-Fehler (nur erwartete gapi-Meldungen); frisches Formular (`P1`, „Glastyp wählen …"); Typwahl rendert Aufbau + setzt Badges (`ISO2-2026-001` / `…-P1`); Gewichte korrekt (36,0 / 20,3 / 29,7 kg); fortlaufendes `-P` über zwei Gruppen (`ISO2-…-P1/-P2`, `FG-…-P3`); Speichern legt N Einträge mit gemeinsamer `projId` an; Bearbeiten-Speichern aktualisiert in-place (db-Länge gleich); leere Zeile wird übersprungen (Positionen lückenlos `P1/P2`); Mobil-Layout bricht die Zeile sauber auf 2 Spalten um.
 
+### Produktions-Digital-Twin: Stationen, Flowchart, Plan-Vorhersage (Phase 10 — Stufe 1)
+Bildet unsere Glas-Aufbereitung digital ab: das Material fließt durch **7 Stationen** (Knoten), an jeder gibt es Inputs (Strom/Wasser), Outputs (Produkt/Abfall) und Zeit. Der Prozess ist heute überwiegend manuell und wird später schrittweise automatisiert — die Architektur trägt das ohne Umbau. **Stufe 1 (jetzt) legt das Fundament: Stationskonfiguration + Plan-/Vorhersage-Ableitung.** Die manuelle Erfassung an den Stationen und der Sensor-Eingang kommen in späteren Stufen; die Event-Form ist dafür schon vorbereitet.
+- **Neuer Tab „🏭 Produktion"** mit klickbarem **Flowchart** (reines HTML/CSS, **keine Chart-Bibliothek**, Branding-Palette) der 7 Stationen in Reihenfolge, durch Pfeile verbunden, horizontal scrollbar auf schmalen Screens. Jeder Knoten zeigt Reihenfolge-Nummer, Name, Transform-Badge, Personenzahl und ein „♻️ Abfall"-Badge bei Stationen mit Abfallstrom. Bei gewähltem Projekt zusätzlich die durchlaufenden Stück + die geschätzte Zeit pro Station.
+- **Die 7 Stationen (Seed-Defaults, editierbar):** 1. **Ausglasen** (2 Pers., `none`) — ISO aus Rahmen lösen · 2. **Auftrennen** (1 Pers., `split`) — ISO → N Einzelscheiben (Lagenzahl `build.n`) · 3. **Randabschnitt** (1 Pers., `trim`) — 15 mm/Seite ab → `(B−30)×(H−30)`, Abfallstrom „Randabschnitt-Cullet" (kontaminiert) · 4. **Waschen** (1 Pers., `none`) — Wasser+Strom · 5. **Visuelle Prüfung** (1 Pers., `qualityGate`) — Ausschussquote (Default 5 %) · 6. **Sortieren/Lagern** (1 Pers., `sort`) — Ausschuss raus, Abfallstrom „Reject-Scheiben" · 7. **Zuschnitt** (1 Pers., `cut`) — Fertigmaß + Abfallstrom „Zuschnitt-Verschnitt".
+- **Stationskonfiguration (ansehen + bearbeiten):** Klick auf eine Station öffnet ein **Panel** mit Rolle, Konfiguration (Reihenfolge, Personen, Transform, Zeit-Richtwert, Ausschussquote), Ressourcenprofil und Abfallströmen. Button **„✏️ Konfiguration bearbeiten"** öffnet ein Inline-Formular: Name, Reihenfolge, Personen, Transform-Typ, Zeit-Richtwert (sec, je Stück/m²), Ausschussquote, beliebig viele **Ressourcen-Richtwerte** (Strom kWh / Wasser L, Faktor, je Stück/m²/min) und **Abfallströme** (Name, sortenrein, kontaminiert) mit „+ / ✕". **Speichern persistiert** (`persist()` → localStorage + Drive-Auto-Sync trägt `production` automatisch mit).
+- **Projekt→Plan-Ableitung (auto-aktualisierend):** Ein Projekt-Selector zeigt alle Projekte mit Zuschnitt-Allokationen. Aus `project.allocations` wird der Plan berechnet (`derivePlan`): jede Allokation liefert N physische Quell-Einheiten (`sheetsTaken`; bei ISO-Sub-Treffern der Parent-ISO mit `ceil(sheetsTaken/layerCount)`), die ab ihrem **Eintrittspunkt** durch alle folgenden Stationen laufen. **Der Plan ist das auto-aktualisierende Soll** — ändert sich das Projekt, ändert sich der Plan; geloggte Events bleiben (später) davon unangetastet.
+- **Eintrittspunkt-Regel (`entryStationOrder`, kleine Mapping-Funktion):** ISO-Typen starten bei **Ausglasen (Station 1)**; bereits einzelne Scheiben (Floatglas/VSG/ESG/Verbundglas/Sonstiges) sind separiert und treten bei **Waschen (Station 4)** ein (Konstante `PROD_SINGLE_PANE_ENTRY_ORDER`, vom User so entschieden; leicht änderbar). **Offener Punkt:** Float-Scheiben überspringen damit den Randabschnitt → erzeugen kein Cullet; falls Einzelscheiben doch getrimmt werden sollen, Eintrittspunkt auf Station 3 stellen.
+- **Transform-Logik entlang der Kette (`derivePlan`):** `split` → Stück ×Lagenzahl, `glassMm` je Scheibe /Lagen (Näherung für kg) · `trim` → Maße −30/Achse, Cullet = `(B·H)−(B−30)(H−30)` · `qualityGate` → Reject-Anteil aus Ausschussquote wird **markiert** · `sort` → markierte Rejects werden **ausgeschleust** (Reject-Abfall fällt hier an, gute Scheiben laufen weiter) · `cut` → Verschnitt aus `allocation.wastePct` (nicht neu gerechnet — von dort übernommen). **Abfall in m² UND kg**, `kg = Abfallfläche(m²) × Glasdicke(mm) × 2,5` (= `/1000 × 2500` — dieselbe Dichte/Formel wie das Gewichts-Feld).
+- **Vorhersagen (Zeit/Ressourcen/Abfall):** Pro Station und als Gesamtsumme. **Zeit** = Σ (Zeit-Richtwert × Stück bzw. m²); **Ressourcen** = Σ (Faktor × Stück/m²/min); **Abfall** je Strom in m² + kg. **Alles klar als Schätzung gekennzeichnet** („Schätzung auf Basis konfigurierter Richtwerte — wird mit echten Erfassungsdaten genauer"). **Parallelität/Personalbesetzung wird in Stufe 1 NICHT modelliert** (sequentielle Summe, offen benannt). Die Stationskonfiguration ist die **alleinige Quelle** aller Vorhersagen, bis echte Erfassungsdaten vorliegen. Daten so abgelegt, dass sie später einer LCA-Sachbilanz (EN 15804) und einer Abfallbilanz zugeordnet werden können — die LCA-Berechnung selbst ist NICHT Teil dieser Stufe.
+- **Wiederverwendete Bausteine:** ISO-Zerlegung/`build.n` aus dem Matching (für `split`), Gewichts-/Dichte-Formel (für kg), `nav()`-Tab-System, CSS-only-Dashboard-Muster (`.kpi`, `.dash-kpis`, Branding-Variablen). **Kein Build-Step**, weiterhin eine Datei `index.html`, GitHub-Pages-deploybar, referrer-gebundene Drive-Auth unberührt.
+- **Lokal verifiziert (statischer Preview, ohne Drive):** kein JS-Fehler (nur erwartete gapi-Meldungen); `production` mit 7 Seed-Stationen initialisiert; `normalizeProduction` backwards-kompat (fehlend → 7 Defaults, Teilkonfig → Felder aufgefüllt); `derivePlan` durchgerechnet und **manuell gegengeprüft** (ISO2 1200×1500 ×2 + Float 800×1200 ×3: Split verdoppelt nach Auftrennen, Cullet 3,2 kg, Reject 4,9 kg, Verschnitt 12,0 kg, Strom 4,5 kWh, Wasser 21 L, Gesamtzeit 1 h 40 min — alle Werte exakt); Flowchart 7 Knoten + 6 Pfeile; Stationspanel mit Vorhersage; Stations-Edit (Wert ändern + Ressource hinzufügen) **persistiert** nach `production` + localStorage. **Live mit Drive noch zu bestätigen:** `production` synchronisiert mit, alte Drive-Datei ohne `production` wird beim Laden mit Default-Stationen initialisiert.
+
 ### Demo-Daten (Auto-Seed)
 - Beim ersten Start auf einem Browser werden einmalig **20 Demo-Glasposten** mit Präfix „DEMO – " im Projektnamen automatisch in den Bestand geseedet (`seedDemoIfNeeded()`). Verteilung: 8× Floatglas, 8× 2-fach Isolierglas, 4× 3-fach Isolierglas mit realistischen Maßen, Beschichtungen und Projekten.
 - Steuerung via Flag `refloat_demo_seeded_v2` in localStorage. Bei Flag-Version-Bump (v2 → v3 …) wird erneut geseedet, ohne lokale Daten zu zerstören.
@@ -231,12 +243,16 @@ Drive-Datei:     'refloat-data.json'
 
 {
   glass:    [...Glaseinträge],   // siehe unten
-  projects: [...Projekte]         // siehe weiter unten
+  projects: [...Projekte],        // siehe weiter unten
+  production: {...}               // Phase 10: Produktions-Twin (Stationen/Charges/Events) — siehe unten
 }
 
-// BACKWARDS-COMPAT: Wenn `data` ein Array ist (altes Format vor Phase 6),
-// wird es als `glass` interpretiert und `projects` mit [] initialisiert.
-// driveSave() schreibt immer das neue Objekt-Format.
+// BACKWARDS-COMPAT:
+//  - Wenn `data` ein Array ist (altes Format vor Phase 6), wird es als `glass`
+//    interpretiert und `projects` mit [] initialisiert.
+//  - Fehlt `production` (Dateien vor Phase 10), seedet normalizeProduction() die
+//    7 Default-Stationen (charges/events = []). driveSave()/persist() schreiben
+//    immer das erweiterte Objekt-Format {glass, projects, production}.
 ```
 
 ### Glaseintrag (ein Eintrag = eine Glasposition)
@@ -306,6 +322,37 @@ Drive-Datei:     'refloat-data.json'
 }
 ```
 
+### Produktion (Phase 10)
+```js
+production: {
+  stations: [ {
+    id,                  // z.B. 'st-randabschnitt'
+    name, order, workers,
+    transform,           // 'none' | 'split' | 'trim' | 'qualityGate' | 'sort' | 'cut'
+    resources: [ {type:'strom'|'wasser', unit:'kWh'|'l', factor:Number, per:'stueck'|'m2'|'min'} ],
+    timeEstimate: {value:Number, unit:'sec', per:'stueck'|'m2'},   // Richtwert, editierbar
+    rejectRatePct,       // nur Prüfung/Sortieren (qualityGate), optional
+    wasteStreams: [ {id, name, sortenrein:Bool, contaminated:Bool} ],
+    role                 // Kurzbeschreibung der Station (Anzeige; in Stufe 1 nicht editierbar)
+  } ],
+  charges: [ {
+    id, projectId, name, status, createdAt
+    // Stufe 1: pro Projekt eine Default-Charge (Struktur fürs spätere Aufteilen vorgesehen,
+    // in der UI noch nicht genutzt — die Plan-Ableitung behandelt das Projekt als eine Charge).
+  } ],
+  events: [ {            // unveränderliches Logbuch — in Stufe 1 nur die FORM definiert, Erfassung folgt
+    id, ts, stationId, chargeId, projectId,
+    paneRef,             // Bezug zur Bestand-/Scheiben-ID
+    type,                // 'start' | 'complete' | 'scrap'
+    qtyStueck, qtyM2,
+    resources: [ {type, value, unit} ],
+    wasteOut: [ {streamId, m2, kg} ],
+    durationSec, byUser, source   // source: 'manual' (später 'sensor') — Datenmodell von Quelle getrennt
+  } ]
+}
+```
+Der **Plan** (Soll je Station: Stück/m²/Zeit/Ressourcen/Abfall) wird NICHT persistiert, sondern bei jedem Render aus `project.allocations` + `stations` abgeleitet (`derivePlan`) → auto-aktualisierend. `charges`/`events` sind in Stufe 1 leere Arrays (Form definiert, Erfassung folgt).
+
 ## Wichtige Logik-Entscheidungen
 1. **ID-Schema:** `[KÜRZEL]-[JAHR]-[NR]-P[Position]`. Kürzel: FG, ISO2, ISO3, VSG, ESG, VG, SONST. Laufende Nummer pro (Jahr+Typ). Positionen **desselben Typs** in einem Projekt teilen sich die Nummer und unterscheiden sich nur über `-P1/-P2`. Unterschiedliche Typen → eigene Nummer.
 2. **„Maße" zeigt Glasdicke ohne Abstandshalter** (= Gewichtsbasis). Physische Gesamtdicke inkl. Abstandshalter steht nur im „Glasaufbau".
@@ -334,6 +381,12 @@ Drive-Datei:     'refloat-data.json'
 25. **Backup = JSON der Kerndaten, nicht der Fotos (Phase 8):** Das Backup sichert bewusst nur `{glass, projects}` (kompakt, deckt das Hauptrisiko Daten-/Projektverlust ab); Fotos bleiben als einzelne Drive-Dateien erhalten. Manuell (Download/Restore = Off-Google-Kopie) + automatisch täglich in Drive (`ReFloat-Backups`). Aufbewahrung über die REINE, testbare Funktion `computeBackupRetention` (letzte 30 Tage täglich, danach 1×/Woche; neuestes nie gelöscht; es werden nur Dateien mit Backup-Namensmuster gelöscht). Wiederherstellen ersetzt IMMER komplett und zieht vorher ein Sicherheits-Backup des Ist-Standes — bewusst kein Merge (eindeutig, vorhersehbar).
 26. **Erfassung = Gruppe (geteilter Aufbau) + Maßtabelle (Zeile = ein Eintrag) (Phase 9):** Die „Neue Erfassung" trennt bewusst die **gemeinsamen** Glasaufbau-Felder (Gruppen-Kopf, einmal) von den **variierenden** Maßen (eine Tabellenzeile je Scheibensatz). Jede Zeile wird beim Speichern ein normaler Bestand-Eintrag — das **Datenmodell bleibt unverändert** (keine neue „Gruppen"-Entität persistiert), die Gruppe ist reine Eingabe-Ergonomie. ID-Logik (Logik-Entscheidung 1) bleibt gültig: `nextNum` je Typ + fortlaufendes `-P{order}` über alle Zeilen aller Gruppen. Geteilt sind Typ/Aufbau/Farbe/Beschichtung/Dicke/R-Strategie/Lagerort/Preis/Status/Tags/Notizen; pro Zeile nur Breite/Höhe/Stückzahl/Fotos (vom User so entschieden — bewusst **kein** Pro-Zeile-Override für Lagerort/Preis/Notizen, Ausnahmen werden einzeln nachbearbeitet). `editEntry` bleibt Einzel-Eintrag (eine Gruppe, eine Zeile, `.editing`-Klasse blendet Mehrfach-Bedienelemente aus). Globale Form-State-Variable `positions` → `groups=[{uid,rows:[…]}]`.
 
+27. **Produktion: Ereignis-Logbuch als Rückgrat, Zustand abgeleitet (Phase 10).** Produktionsfortschritt wird (ab Stufe 2) als unveränderliche Events gespeichert; der Zustand wird daraus abgeleitet — analog dazu, wie heute `status` aus den Reservierungs-Zählern abgeleitet wird. Der **Produktionsplan** dagegen ist das aus dem Projekt **abgeleitete, auto-aktualisierende Soll** (`derivePlan` aus `project.allocations`): ändert sich das Projekt, ändert sich das Soll der noch offenen Menge — geloggte Events bleiben unangetastet. In Stufe 1 ist nur die Event-**Form** definiert (`{id, ts, stationId, chargeId, projectId, paneRef, type, qtyStueck, qtyM2, resources, wasteOut, durationSec, byUser, source}`), keine Erfassung.
+28. **Datenmodell strikt von der Datenquelle getrennt (Phase 10).** Ob ein Mensch am Tablet tippt (`source:'manual'`) oder später ein Sensor meldet (`source:'sensor'`) — beides schreibt dieselbe Event-Form ins selbe Logbuch. Die Event-Form ist so gewählt, dass eine automatische Quelle später nichts strukturell ändern muss; Sensor-Eingang ist in Stufe 1 bewusst NICHT implementiert.
+29. **Route über kleine Eintrittspunkt-Mapping-Funktion, nicht hartkodiert (Phase 10).** `entryStationOrder(entry)`: ISO-Typen starten bei Ausglasen (order 1), bereits einzelne Scheiben bei Waschen (order 4, Konstante `PROD_SINGLE_PANE_ENTRY_ORDER` — vom User entschieden). Default-Route = volle Kette ab Eintrittspunkt bis Station 7. Leicht erweiterbar (z. B. weitere Typen, andere Eintrittspunkte) ohne Änderung an vielen Stellen. **Konsequenz/offen:** Einzelscheiben überspringen den Randabschnitt und erzeugen damit kein Randabschnitt-Cullet — falls gewünscht, Eintrittspunkt auf order 3 stellen.
+30. **Transforms verändern Mengen/Maße/Abfall entlang der Kette (Phase 10).** `split` nutzt die vorhandene ISO-Lagenzahl (`build.n`) — Stück ×Lagen, `glassMm` je Scheibe /Lagen (Näherung für kg). `trim` = `(B−30)×(H−30)`, Cullet aus der Flächendifferenz. `qualityGate` **markiert** den Reject-Anteil (Ausschussquote), `sort` **schleust** ihn aus (Reject-Abfall fällt am Sortieren an, gute Scheiben laufen weiter) — bewusst getrennt, weil Prüfung den Ausschuss feststellt und Sortieren ihn entnimmt. `cut`-Verschnitt wird aus `allocation.wastePct` übernommen (nicht neu gerechnet — liegt pro Projekt-Allokation bereits vor). Abfall durchgängig in **m² und kg** mit `kg = Fläche(m²) × Dicke(mm) × 2,5` (dieselbe Dichte/Formel wie das Gewichts-Feld).
+31. **Vorhersagen sind Schätzungen aus Richtwerten, sequentielle Summe (Phase 10).** Die Stationskonfiguration ist die **alleinige Quelle** aller Zeit-/Ressourcen-/Abfall-Vorhersagen, solange keine echten Erfassungsdaten vorliegen; überall klar als Schätzung gekennzeichnet. **Parallelität/Personalbesetzung wird in Stufe 1 NICHT modelliert** (sequentielle Summe genügt, offen benannt). Daten so abgelegt, dass sie später einer LCA-Sachbilanz (EN 15804, modulweise) und einer Abfallbilanz zugeordnet werden können — die LCA-Berechnung selbst ist NICHT Teil dieser Stufe. `production` wandert backwards-kompatibel in `{glass, projects, production}`; Auto-Sync und `modifiedTime`-Polling tragen es automatisch mit.
+
 ## ⚠️ Bekannte Schwachstellen (für später)
 1. **✅ GELÖST (Phase 7.2): Auto-Refresh anderer Änderungen.** Polling alle 30 s auf `modifiedTime` der Drive-Datei; bei fremder Änderung wird sicher auto-geladen (passive Ansicht + nichts Ungespeichertes) bzw. ein „jetzt laden"-Banner gezeigt. Details siehe Abschnitt „Auto-Refresh / Mehrbenutzer-Sync (Phase 7.2)". Noch **live** mit 2 Konten zu bestätigen.
 2. **Last-write-wins-Konflikte (weiterhin offen).** Zwei parallele Bearbeitungen → der zweite Speichern überschreibt den ersten. Auto-Refresh (7.2) verkleinert das Zeitfenster, beseitigt es aber nicht. **Fix:** Versions-Check beim Speichern — die Grundlage (`driveKnownModifiedTime`) liegt seit 7.2 vor; vor `driveSave()` Server-`modifiedTime` prüfen und bei neuerem Stand warnen statt überschreiben.
@@ -346,11 +399,14 @@ Drive-Datei:     'refloat-data.json'
 ## ⏭️ Nächster Schritt
 **Live: Phase 4 Matching · Phase 4.1 Mehrfach-Zuschnitt · Phase 4.2 Interaktiver Allokator · Phase 5 Landing Page · Phase 6 Projekte-Tab + Reservierungs-Buchhaltung + Schneidskizze + PDF-Export · Phase 6.1 Skizze-Geometrie- und PDF-Layout-Korrektur · Phase 7 Bestand-Visualisierung (Verfügbarkeits-Balken + Cockpit-Dashboard) + crit_status-Fix (nur „Verfügbar" wird gematcht) · Phase 7.1 Projekt-Lifecycle (Archivieren statt Löschen, „Abschluss rückgängig", „Bestand abgleichen") · Phase 7.2 Auto-Refresh (Drive-`modifiedTime`-Polling, Mehrbenutzer-Sync) · Phase 7.3 Matching: leere Anfrage-Farbe = „Klar" · Phase 7.4 Picker-Fix: `setAppId` + Picker API aktiviert (geteilte DB lädt jetzt für Team-Mitglieder) · Phase 7.5 UI-Konsistenz (Titel „Übersicht Glaslager", einheitliche Legenden Verfügbar/Reserviert/Verkauft, 3-farbiger m²-Balken) + Matching-Upload-Dateiname + Projekt-Re-Match („🔄 Mit aktuellem Bestand neu abgleichen") · Phase 7.6 Allokator wählt verlässlich den geringsten echten Verschnitt (kleinste passende Scheibe bei kleinen Mengen) + manuelle Auswahl per „Wählen" aus der Referenzliste · Phase 7.7 Feinschliff (Referenzliste zeigt echten Verschnitt; „↩ Stornierung rückgängig"; m²-Kennzahlen je Projekt; neue gestaltete ExcelJS-Anfrage-Vorlage mit Projekt-ID/Pos.-ID/Glasaufbau + Glastyp-Dropdown) · Phase 8 Daten-Backup (manuell Download/Restore + automatisch täglich in Drive mit gestaffelter Aufbewahrung — Drive-Teil noch live zu bestätigen) · Phase 8.1 Hochgeladene Original-Anfrage-Dateien landen im Unterordner „ReFloat-Anfragen" (statt im Hauptordner) · Phase 9 Schnellere Erfassung: Glas-Gruppen (geteilter Aufbau) + Maßtabelle (jede Zeile = ein Bestand-Eintrag) — minimiert wiederholte Eingaben bei vielen ähnlichen Positionen (deployed Commit `346b482`; lokal im Preview verifiziert, Foto-Upload pro Zeile noch live mit Drive zu bestätigen).**
 
+**Lokal fertig, NOCH NICHT deployed:** **Phase 10 Produktions-Digital-Twin (Stufe 1)** — Tab „🏭 Produktion" mit klickbarem Flowchart der 7 Stationen (HTML/CSS, keine Lib), editierbarer Stationskonfiguration (Transform/Ressourcen/Zeit/Ausschuss/Abfallströme, persistiert), und auto-aktualisierender Projekt→Plan-Vorhersage (Zeit/Strom/Wasser/Abfall pro Station + gesamt, klar als Schätzung). Datenmodell um `production` erweitert (backwards-kompatibel, Drive-Sync trägt es mit). Manuelle Erfassung an den Stationen = Stufe 2 (noch nicht gebaut).
+
 Vom User bereits live bestätigt: Projekt-Anlegen aus Matching funktioniert sauber.
 
 **Aktueller Stand:** Erste **Mehrbenutzer-Beta-Tests mit dem Team** starten. App-Passwort = **`refloat-beta`**. Onboarding eines neuen Team-Mitglieds (einmalig, durch den Owner): (1) Google-Konto des Kollegen als **Testnutzer** im Google-Cloud-Projekt freischalten (APIs & Dienste → OAuth-Zustimmungsbildschirm / „Zielgruppe" → Testnutzer), (2) Drive-Datei/-Ordner mit ihm als **Bearbeiter** teilen. Der Kollege: App öffnen → Passwort → „🔌 Drive verbinden" → **„Bestehende Datenbank wählen"** (Picker) — NICHT „Neue erstellen". Fotos werden nur sichtbar, wenn der **enthaltende Ordner** geteilt ist (nicht nur die JSON).
 
 Noch live/im-Team zu bestätigen:
+- **Produktions-Twin (Phase 10) — lokal verifiziert, Drive-Teil live offen:** Nach dem Deploy + F5: `production` wird mit dem Team-Stand synchronisiert; eine bestehende Drive-Datei OHNE `production` wird beim Laden mit den 7 Default-Stationen initialisiert (kein Datenverlust an `glass`/`projects`); eine Stations-Änderung von A erscheint bei B (Auto-Refresh). Inhaltlich gegenprüfen, ob Eintrittspunkt „Einzelscheibe → Waschen" und die Seed-Richtwerte (Zeiten, kWh, L, 5 % Ausschuss) zur realen Aufbereitung passen — alle Werte sind im Stationspanel editierbar.
 - **Gruppen-Erfassung (Phase 9):** echte Erfassung mit mehreren Maßen je Gruppe speichern → korrekt in Übersicht + Sync nach Drive; **Foto pro Maß-Zeile** (📷) hochladen → wird hochgeladen und beim Bearbeiten wieder angezeigt; einen so erfassten Eintrag bearbeiten → öffnet als Einzel-Karte. (Form-Logik selbst lokal verifiziert; nur Drive-Foto-Upload braucht die Live-Domain.) **Team muss die Seite einmal neu laden (F5)**, um die neue Code-Version zu bekommen.
 - **Auto-Refresh (Phase 7.2) — NUR LOKAL VERIFIZIERT, live noch offen:** Mit 2 Konten prüfen: A ändert etwas → B (passive Ansicht) sieht es in ~30 s automatisch (Toast „🔄 Aktualisiert…"); im Formular/Modal/Matching erscheint stattdessen die Pille „🔄 jetzt laden"; Hintergrund-Tab pausiert, beim Zurückkehren Sofort-Check. (Auf localhost nicht testbar — Drive nur auf github.io.)
 - **Reservierungs-Buchhaltung im Mehrpersonen-Betrieb:** A legt Projekt an → B sieht die reduzierte Verfügbarkeit jetzt automatisch (dank 7.2). Zwei parallel angelegte Projekte auf demselben Posten → weiterhin Last-write-wins (Schwachstelle 2, offen).
@@ -360,7 +416,9 @@ Noch live/im-Team zu bestätigen:
 - **Schneidskizze-Geometrie & PDF-Export (Phase 6.1):** Skizze als Raster (Cuts oben-links, Verschnitt rechts/unten), „× N"-Badge bei identischen Plänen; PDF = Seite 1 Text+Tabelle, Seiten 2..N je eine Skizze (kein dreifaches Rendering); Skalierung der großen Skizzen prüfen (~17 cm breit).
 - **JSON-Migration / Drive-Upload der Original-Datei:** bestehende Drive-Datei wird beim ersten Sync ins `{glass, projects}`-Format überführt (kein Eintrag darf fehlen); `uploadSourceFileToDrive` läuft nur live.
 
-Danach: **Schwachstelle 2 (Konflikt-Warnung beim Speichern)** ist der nächste sinnvolle Entwicklungsschritt — die Grundlage (`driveKnownModifiedTime`) liegt seit 7.2 vor: vor `driveSave()` die Server-`modifiedTime` gegen den bekannten Stand prüfen und bei neuerem Stand warnen statt überschreiben. Schwachstellen 3 + 4 + 5 + 6 sind Edge-Cases, erst bei konkretem Trigger fixen.
+Danach: **Phase 10 Stufe 2 — manuelle Ereignis-Erfassung an den Stationen.** Tablet-taugliche Ansicht, in der ein Mitarbeiter eine Station wählt (ein Gerät kann mehrere Stationen bedienen) und Durchläufe erfasst (Einheit X hat Station Y betreten/verlassen, mit Mengen/Ressourcen/Abfall/Zeit). Schreibt Events in `production.events` (Form steht, `source:'manual'`); der Ist-Zustand wird daraus abgeleitet und dem Soll (`derivePlan`) gegenübergestellt. Sensor-/Maschinen-Anbindung (`source:'sensor'`) und die LCA-Berechnung (EN 15804) folgen in weiteren Stufen — beides ist im Datenmodell bereits vorgesehen.
+
+Parallel offen: **Schwachstelle 2 (Konflikt-Warnung beim Speichern)** — die Grundlage (`driveKnownModifiedTime`) liegt seit 7.2 vor: vor `driveSave()` die Server-`modifiedTime` gegen den bekannten Stand prüfen und bei neuerem Stand warnen statt überschreiben. Schwachstellen 3 + 4 + 5 + 6 sind Edge-Cases, erst bei konkretem Trigger fixen.
 
 ## GitHub
 - Öffentliches Repository: `urbanmatter/refloat-inventory`

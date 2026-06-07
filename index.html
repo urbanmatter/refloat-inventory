@@ -261,6 +261,48 @@ tr:last-child td{border-bottom:none}
 .tb-val{color:var(--subtext);white-space:nowrap;font-variant-numeric:tabular-nums}
 .dash-empty{color:var(--subtext);font-size:.85rem}
 
+/* ── Produktion: Flowchart + Stationspanel (Phase 10) ── */
+.prod-intro{background:#EEF0FF;border-left:4px solid var(--primary);padding:12px 16px;border-radius:8px;font-size:.86rem;color:var(--text);margin-bottom:16px;line-height:1.5}
+.prod-toolbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:8px}
+.prod-toolbar label{font-size:.8rem;color:var(--subtext);font-weight:600}
+.prod-toolbar select{max-width:340px}
+.prod-est{font-size:.74rem;color:var(--subtext);font-style:italic;margin:4px 0 16px}
+.flow-wrap{overflow-x:auto;padding:6px 2px 14px;-webkit-overflow-scrolling:touch}
+.flow{display:flex;align-items:stretch;min-width:max-content}
+.flow-node{flex:0 0 152px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:transform .12s,box-shadow .12s,border-color .12s}
+.flow-node:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.flow-node.active{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary);background:#F4F2FF}
+.flow-head{display:flex;align-items:center;gap:8px}
+.flow-num{width:24px;height:24px;flex:0 0 auto;border-radius:50%;background:var(--primary);color:#fff;font-size:.78rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.flow-name{font-size:.85rem;font-weight:700;color:var(--text);line-height:1.15}
+.flow-meta{font-size:.72rem;color:var(--subtext);display:flex;flex-direction:column;gap:3px}
+.flow-stat{margin-top:auto;font-size:.74rem;color:var(--primary);font-weight:700;font-variant-numeric:tabular-nums;border-top:1px solid var(--border);padding-top:6px;display:flex;flex-direction:column;gap:1px}
+.flow-arrow{flex:0 0 24px;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:1.15rem;font-weight:700}
+.xform{display:inline-block;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:20px;background:rgba(91,75,225,.10);color:var(--primary);white-space:nowrap}
+.wbadge{display:inline-block;font-size:.66rem;font-weight:600;padding:1px 7px;border-radius:20px;background:rgba(224,160,18,.16);color:#9A6B00;white-space:nowrap}
+/* Gesamt-Summary (KPIs) — nutzt .dash-kpis/.kpi aus dem Dashboard */
+.prod-summary{margin:8px 0 18px}
+/* Stationspanel */
+.station-panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-top:6px;box-shadow:var(--shadow)}
+.sp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.sp-title{font-size:1.12rem;font-weight:800;color:var(--text);display:flex;align-items:center;gap:10px}
+.sp-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sp-role{color:var(--subtext);font-size:.86rem;margin:4px 0 14px}
+.sp-grid{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:760px){.sp-grid{grid-template-columns:1fr 1fr}}
+.sp-block{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+.sp-block h4{font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--primary);margin-bottom:9px}
+.sp-row{display:flex;justify-content:space-between;gap:10px;font-size:.84rem;padding:4px 0;border-bottom:1px dashed var(--border)}
+.sp-row:last-child{border-bottom:0}
+.sp-row b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.sp-muted{color:var(--subtext);font-size:.82rem}
+/* Stations-Edit-Form */
+.sp-edit .fg{margin-bottom:11px}
+.sp-edit .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.res-row,.ws-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.res-row select,.res-row input,.ws-row input{padding:6px 8px;font-size:.84rem}
+.res-row .btn-x,.ws-row .btn-x{margin-left:auto}
+
 /* ── Cards view ── */
 .cards{display:grid;grid-template-columns:1fr;gap:16px}
 @media(min-width:600px){.cards{grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}}
@@ -469,6 +511,7 @@ tr:last-child td{border-bottom:none}
     <button class="btn nav-btn" id="nav-form" onclick="newEntry()">+ Neue Erfassung</button>
     <button class="btn nav-btn" id="nav-match" onclick="nav('match')">🔍 Matching</button>
     <button class="btn nav-btn" id="nav-projects" onclick="nav('projects')">📁 Projekte</button>
+    <button class="btn nav-btn" id="nav-production" onclick="nav('production')">🏭 Produktion</button>
     <button class="btn nav-btn" id="drive-btn" onclick="driveAction()">⏳ Drive lädt…</button>
   </nav>
 </header>
@@ -713,6 +756,14 @@ tr:last-child td{border-bottom:none}
 <!-- ═══════════════════════ PROJEKT — DETAIL ═══════════════════════ -->
 <section class="section" id="section-project">
   <div id="proj-detail"></div>
+</section>
+
+<!-- ═══════════════════════ PRODUKTION (Phase 10) ═══════════════════════ -->
+<section class="section" id="section-production">
+  <div class="sec-hd">
+    <h1>Produktion</h1>
+  </div>
+  <div id="prod-body"></div>
 </section>
 </main>
 
@@ -1025,13 +1076,15 @@ async function driveLoad(isAuto){
     } else {
       data = resp.result;
     }
-    // Beide Formate akzeptieren: Array (alt) ODER {glass, projects} (neu).
-    let driveGlass, driveProjects;
-    if(Array.isArray(data)){ driveGlass = data; driveProjects = []; }
+    // Beide Formate akzeptieren: Array (alt) ODER {glass, projects[, production]} (neu).
+    // production fehlt in Dateien vor Phase 10 → normalizeProduction seedet die Default-Stationen.
+    let driveGlass, driveProjects, driveProduction;
+    if(Array.isArray(data)){ driveGlass = data; driveProjects = []; driveProduction = null; }
     else if(data && typeof data === 'object'){
       driveGlass = Array.isArray(data.glass) ? data.glass : [];
       driveProjects = Array.isArray(data.projects) ? data.projects : [];
-    } else { driveGlass = []; driveProjects = []; }
+      driveProduction = data.production || null;
+    } else { driveGlass = []; driveProjects = []; driveProduction = null; }
     // Race-Schutz: lokal frisch geseedete DEMO-Posten, die in Drive noch nicht sind, behalten.
     // Sonst gehen sie verloren, wenn driveLoad nach dem Initial-Seed läuft.
     const driveIds = new Set(driveGlass.map(e=>e.id));
@@ -1039,7 +1092,8 @@ async function driveLoad(isAuto){
     db = driveGlass.concat(localDemoMissing);
     db.forEach(normalizeEntry);
     projects = driveProjects;
-    localStorage.setItem(KEY, JSON.stringify({glass: db, projects: projects}));
+    production = normalizeProduction(driveProduction);   // production aus Drive übernehmen / mit Defaults initialisieren
+    localStorage.setItem(KEY, JSON.stringify({glass: db, projects: projects, production: production}));
     if(localDemoMissing.length > 0) persist();  // erzwinge Drive-Sync der zurückgehaltenen DEMOs
     if(typeof seedDemoIfNeeded === 'function') seedDemoIfNeeded();
     if(typeof filter === 'function') filter();
@@ -1071,7 +1125,7 @@ async function driveSave(){
       `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=id,modifiedTime`,
       { method:'PATCH',
         headers:{ 'Authorization':`Bearer ${driveAccessToken}`, 'Content-Type':'application/json' },
-        body: JSON.stringify({glass: db, projects: projects}) }
+        body: JSON.stringify({glass: db, projects: projects, production: production}) }
     );
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     // Eigenen Schreibstand merken, damit das Polling den eigenen Save nicht als fremde Änderung wertet.
@@ -1304,6 +1358,7 @@ const D_ISO=[3,4,5,6,8,10,12], D_VSG=[3,4,5,6,8,10,12], D_ESG=[4,5,6,8,10,12];
 // ════════════════════════ STATE ════════════════════════
 let db=[], fd=[], view='t', detailId=null, detailPhotos=[];
 let projects=[];                     // Projekt-Sammlung (siehe Schema unten)
+let production=null;                 // Produktions-Twin (Phase 10): {stations, charges, events} — siehe PRODUKTION-Block
 // groups: Array von {uid, rows:[rowUid,...]}. Eine Gruppe = ein Glasaufbau (gemeinsame Felder im Gruppen-Kopf);
 // jede row = ein Maß (Breite/Höhe/Stückzahl + Fotos) und wird beim Speichern ein eigener Bestand-Eintrag.
 let groups=[], photoStore={}, fixedIds={}, editingId=null, uidSeq=1;
@@ -1334,19 +1389,222 @@ function normalizeEntry(e){
   return e;
 }
 
+// ════════════════════════ PRODUKTION — Stationskonfiguration (Phase 10) ════════════════════════
+// Produktions-Digital-Twin der Glas-Aufbereitung: das Material fließt durch 7 Stationen (Knoten).
+// `production` ist die EDITIERBARE Stationskonfiguration und damit die ALLEINIGE Quelle aller
+// Vorhersagen (Zeit, Ressourcen, Abfall), solange keine echten Erfassungsdaten vorliegen.
+//   stations[] = Stationsdefinition (Name, Reihenfolge, Personen, Transform, Richtwerte)
+//   charges[]  = Produktionschargen (Stufe 1: pro Projekt eine Default-Charge — Struktur fürs
+//                spätere Aufteilen schon vorgesehen, in der UI noch nicht genutzt)
+//   events[]   = unveränderliches Ereignis-Logbuch (Form definiert, Erfassung folgt in Stufe 2;
+//                der Zustand wird daraus abgeleitet — wie `status` aus den Reservierungs-Zählern)
+// Architektur: Datenmodell strikt von der Datenquelle getrennt — ob ein Mensch am Tablet tippt
+// (source:'manual') oder später ein Sensor meldet (source:'sensor'), beides schreibt dieselbe
+// Event-Form ins selbe Logbuch.
+
+// Reihenfolge-Position, ab der bereits einzelne Scheiben (kein ISO) in die Kette eintreten.
+// ISO-Typen starten immer bei Ausglasen (order 1); Einzelscheiben (Floatglas/VSG/ESG/Verbundglas/
+// Sonstiges) sind bereits separiert und treten bei Waschen (order 4) ein. Kleine Mapping-Funktion
+// (entryStationOrder) statt Hartkodierung an vielen Stellen — leicht erweiterbar.
+const PROD_SINGLE_PANE_ENTRY_ORDER = 4;
+// Mögliche Transform-Typen + lesbare Bezeichnung (für das Stations-Edit-Dropdown).
+const PROD_TRANSFORMS = [
+  {k:'none',        label:'none — keine Mengenänderung'},
+  {k:'split',       label:'split — ISO in Einzelscheiben (1 → N Lagen)'},
+  {k:'trim',        label:'trim — Randabschnitt (B−30 × H−30)'},
+  {k:'qualityGate', label:'qualityGate — gut/Ausschuss (Ausschussquote)'},
+  {k:'sort',        label:'sort — Ausschuss aussortieren'},
+  {k:'cut',         label:'cut — Zuschnitt auf Fertigmaß (+ Verschnitt)'}
+];
+
+// Default-Stationskonfiguration (7 Stationen in Reihenfolge). Strom in kWh, Wasser in L; Zeit in sec.
+// Alle Werte sind Richtwerte und im Stationspanel editierbar.
+function seedStations(){
+  return [
+    { id:'st-ausglasen', name:'Ausglasen', order:1, workers:2, transform:'none',
+      resources:[{type:'strom',unit:'kWh',factor:0.05,per:'stueck'}],
+      timeEstimate:{value:600,unit:'sec',per:'stueck'}, rejectRatePct:0, wasteStreams:[],
+      role:'ISO-Element wird aus dem Fensterrahmen gelöst (ISO bleibt eine Einheit).' },
+    { id:'st-auftrennen', name:'Auftrennen', order:2, workers:1, transform:'split',
+      resources:[{type:'strom',unit:'kWh',factor:0.05,per:'stueck'}],
+      timeEstimate:{value:300,unit:'sec',per:'stueck'}, rejectRatePct:0, wasteStreams:[],
+      role:'ISO-Element wird in Einzelscheiben getrennt (1 ISO → N Lagen).' },
+    { id:'st-randabschnitt', name:'Randabschnitt', order:3, workers:1, transform:'trim',
+      resources:[{type:'strom',unit:'kWh',factor:0.10,per:'stueck'}],
+      timeEstimate:{value:180,unit:'sec',per:'stueck'}, rejectRatePct:0,
+      wasteStreams:[{id:'cullet-rand',name:'Randabschnitt-Cullet',sortenrein:true,contaminated:true}],
+      role:'15 mm an allen vier Seiten abschneiden (Dichtstoffreste). Scheibe wird (B−30)×(H−30).' },
+    { id:'st-waschen', name:'Waschen', order:4, workers:1, transform:'none',
+      resources:[{type:'wasser',unit:'l',factor:3,per:'stueck'},{type:'strom',unit:'kWh',factor:0.20,per:'stueck'}],
+      timeEstimate:{value:120,unit:'sec',per:'stueck'}, rejectRatePct:0, wasteStreams:[],
+      role:'Reinigung der Einzelscheiben.' },
+    { id:'st-pruefung', name:'Visuelle Prüfung', order:5, workers:1, transform:'qualityGate',
+      resources:[{type:'strom',unit:'kWh',factor:0.05,per:'stueck'}],
+      timeEstimate:{value:90,unit:'sec',per:'stueck'}, rejectRatePct:5, wasteStreams:[],
+      role:'Prüfung in beleuchteter schwarzer Prüfbox auf Kratzer/Defekte (gut/Ausschuss).' },
+    { id:'st-sortieren', name:'Sortieren/Lagern', order:6, workers:1, transform:'sort',
+      resources:[{type:'strom',unit:'kWh',factor:0.02,per:'stueck'}],
+      timeEstimate:{value:60,unit:'sec',per:'stueck'}, rejectRatePct:0,
+      wasteStreams:[{id:'reject-scheiben',name:'Reject-Scheiben',sortenrein:true,contaminated:false}],
+      role:'Ausschuss-Scheiben sortenrein fürs Recycling aussortieren; gute Scheiben lagern/kommissionieren.' },
+    { id:'st-zuschnitt', name:'Zuschnitt', order:7, workers:1, transform:'cut',
+      resources:[{type:'strom',unit:'kWh',factor:0.30,per:'stueck'}],
+      timeEstimate:{value:240,unit:'sec',per:'stueck'}, rejectRatePct:0,
+      wasteStreams:[{id:'verschnitt',name:'Zuschnitt-Verschnitt',sortenrein:true,contaminated:false}],
+      role:'Zuschnitt auf Fertigmaß (+ Verschnitt), Lagerung/Kommissionierung auf Gestellen.' }
+  ];
+}
+function defaultProduction(){ return { stations: seedStations(), charges: [], events: [] }; }
+
+// Backwards-kompatibel: alte Dateien ohne `production` (oder mit Teilkonfiguration) werden mit
+// Default-Werten initialisiert. Fehlende Felder pro Station defensiv auffüllen.
+function normalizeProduction(p){
+  if(!p || typeof p!=='object' || Array.isArray(p)) return defaultProduction();
+  const out = {
+    stations: (Array.isArray(p.stations) && p.stations.length) ? p.stations.map(s=>Object.assign({}, s)) : seedStations(),
+    charges:  Array.isArray(p.charges) ? p.charges : [],
+    events:   Array.isArray(p.events)  ? p.events  : []
+  };
+  out.stations.forEach((s,i)=>{
+    if(s.order==null) s.order = i+1;
+    if(s.workers==null) s.workers = 1;
+    if(!s.transform) s.transform = 'none';
+    if(!Array.isArray(s.resources)) s.resources = [];
+    if(!Array.isArray(s.wasteStreams)) s.wasteStreams = [];
+    if(!s.timeEstimate || typeof s.timeEstimate!=='object') s.timeEstimate = {value:0,unit:'sec',per:'stueck'};
+    if(s.rejectRatePct==null) s.rejectRatePct = 0;
+  });
+  out.stations.sort((a,b)=>(a.order||0)-(b.order||0));
+  return out;
+}
+function ensureProduction(){ production = normalizeProduction(production); }
+function stationsSorted(){ ensureProduction(); return production.stations.slice().sort((a,b)=>(a.order||0)-(b.order||0)); }
+
+// ─── Route-Mapping (Eintrittspunkt je Einheit) ───
+// ISO-Typen starten bei Ausglasen (order 1); bereits einzelne Scheiben treten bei Waschen ein.
+function entryStationOrder(entry){
+  const t = String(entry && entry.type || '');
+  if(t==='2-fach Isolierglas' || t==='3-fach Isolierglas') return 1;
+  return PROD_SINGLE_PANE_ENTRY_ORDER;
+}
+// Wie viele Einzelscheiben entstehen aus einem ISO beim Auftrennen (split)? = Lagenzahl (build.n).
+function splitCountFor(entry){
+  const b = entry && entry.build;
+  if(b && b.kind==='iso') return b.n || (Array.isArray(b.lagen)?b.lagen.length:2) || 2;
+  return 1;
+}
+
+// ─── Plan-Ableitung aus dem Projekt (auto-aktualisierend) ───
+// Liefert pro Station die durchlaufenden Scheiben (Stück + m²), geschätzte Zeit, Ressourcen
+// (Strom kWh / Wasser L) und erwarteten Abfall je Strom (m² + kg). Reine Vorhersage aus den
+// konfigurierten Richtwerten — wird mit echten Erfassungsdaten (Stufe 2) genauer.
+// Modell-Annahmen Stufe 1 (bewusst offen benannt): sequentielle Summe ohne Parallelität/
+// Personalbesetzung; Ausschuss wird an der Prüfung markiert und am Sortieren ausgeschleust.
+function KG_FROM_AREA(m2, mm){ return (Number(m2)||0) * (Number(mm)||0) * 2.5; } // = areaM2 × (mm/1000) × 2500
+function derivePlan(project){
+  const stations = stationsSorted();
+  const agg = {};
+  stations.forEach(s=> agg[s.id] = { stueck:0, m2:0, timeSec:0, strom:0, wasser:0, waste:{} });
+  const qualityStation = stations.find(s=>s.transform==='qualityGate');
+  const rejectRate = qualityStation ? (Number(qualityStation.rejectRatePct)||0)/100 : 0;
+
+  const addRes = (a, s, stueck, m2, durSec)=>{
+    (s.resources||[]).forEach(r=>{
+      let v;
+      if(r.per==='m2') v = (Number(r.factor)||0) * m2;
+      else if(r.per==='min') v = (Number(r.factor)||0) * (durSec/60);
+      else v = (Number(r.factor)||0) * stueck;            // 'stueck' (Default)
+      if(r.type==='wasser') a.wasser += v; else a.strom += v;
+    });
+  };
+  const addWaste = (a, stream, m2, kg)=>{
+    if(!stream) return;
+    if(!a.waste[stream.id]) a.waste[stream.id] = { id:stream.id, name:stream.name, m2:0, kg:0, sortenrein:!!stream.sortenrein, contaminated:!!stream.contaminated };
+    a.waste[stream.id].m2 += m2; a.waste[stream.id].kg += kg;
+  };
+
+  const allocs = (project && Array.isArray(project.allocations)) ? project.allocations : [];
+  for(const al of allocs){
+    const targetId = al.virtual ? al.parentId : al.stockId;
+    const entry = findStockById(targetId) || { type: al.type, w: al.stockW, h: al.stockH, glassMm: 0, build: null };
+    const lc = al.virtual ? (al.layerCount || splitCountFor(entry) || 1) : 1;
+    let qty = al.virtual ? Math.ceil((Number(al.sheetsTaken)||0) / (lc||1)) : (Number(al.sheetsTaken)||0);
+    if(qty<=0) continue;
+    let pw = Number(al.stockW)||Number(entry.w)||0;
+    let ph = Number(al.stockH)||Number(entry.h)||0;
+    let glassMm = Number(entry.glassMm || entry.d || 0);
+    let carriedReject = 0;                                  // an der Prüfung markiert, am Sortieren raus
+    const startOrder = entryStationOrder(entry);
+    for(const s of stations){
+      if((s.order||0) < startOrder) continue;              // vor dem Eintrittspunkt überspringen
+      const paneArea = (pw/1000)*(ph/1000);
+      const m2 = qty * paneArea;
+      const durSec = (s.timeEstimate && s.timeEstimate.per==='m2')
+        ? (Number(s.timeEstimate.value)||0) * m2
+        : (Number(s.timeEstimate.value)||0) * qty;
+      const a = agg[s.id];
+      a.stueck += qty; a.m2 += m2; a.timeSec += durSec;
+      addRes(a, s, qty, m2, durSec);
+      // Transform anwenden → Output für die nächste Station
+      if(s.transform==='split'){
+        const n = splitCountFor(entry);
+        if(n>1){ qty = qty * n; glassMm = glassMm>0 ? glassMm/n : glassMm; } // jede Lage = volle Fläche, ~Dicke/Lagen
+      } else if(s.transform==='trim'){
+        const nw=Math.max(0,pw-30), nh=Math.max(0,ph-30);
+        const wM2 = qty * Math.max(0, paneArea - (nw/1000)*(nh/1000));
+        addWaste(a, (s.wasteStreams||[])[0], wM2, KG_FROM_AREA(wM2, glassMm));
+        pw=nw; ph=nh;
+      } else if(s.transform==='qualityGate'){
+        carriedReject = qty * rejectRate;
+      } else if(s.transform==='sort'){
+        if(carriedReject>0){
+          const rM2 = carriedReject * paneArea;
+          addWaste(a, (s.wasteStreams||[])[0], rM2, KG_FROM_AREA(rM2, glassMm));
+          qty = Math.max(0, qty - carriedReject);          // gute Scheiben laufen weiter
+          carriedReject = 0;
+        }
+      } else if(s.transform==='cut'){
+        const cM2 = m2 * (Number(al.wastePct)||0);          // geplanter Verschnitt aus der Allokation
+        addWaste(a, (s.wasteStreams||[])[0], cM2, KG_FROM_AREA(cM2, glassMm));
+      }
+    }
+  }
+  // Gesamtsummen
+  let timeSec=0, strom=0, wasser=0; const waste={};
+  stations.forEach(s=>{ const a=agg[s.id]; timeSec+=a.timeSec; strom+=a.strom; wasser+=a.wasser;
+    Object.values(a.waste).forEach(w=>{
+      if(!waste[w.id]) waste[w.id]={id:w.id,name:w.name,m2:0,kg:0,sortenrein:w.sortenrein,contaminated:w.contaminated};
+      waste[w.id].m2+=w.m2; waste[w.id].kg+=w.kg;
+    });
+  });
+  return { byStation:agg, totals:{timeSec, strom, wasser, waste}, hasAllocs: allocs.length>0 };
+}
+// Formatierung Dauer (sec → s / min / h min) für Zeit-Vorhersagen.
+function fmtDur(sec){
+  sec = Math.round(Number(sec)||0);
+  if(sec<=0) return '0 min';
+  if(sec<60) return sec+' s';
+  const m = Math.round(sec/60);
+  if(m<60) return m+' min';
+  const h = Math.floor(m/60), mm = m%60;
+  return mm ? `${h} h ${mm} min` : `${h} h`;
+}
+function fmtNum(x, dp){ return (Number(x)||0).toLocaleString('de-DE',{maximumFractionDigits: dp==null?1:dp}); }
+
 // ════════════════════════ STORAGE ════════════════════════
 // JSON-Format: {glass: [...], projects: [...]}  (alt: Array von Glas-Einträgen)
 function load(){
   try{
     const raw = JSON.parse(localStorage.getItem(KEY)||'[]');
-    if(Array.isArray(raw)){ db = raw; projects = []; }
-    else { db = Array.isArray(raw.glass) ? raw.glass : []; projects = Array.isArray(raw.projects) ? raw.projects : []; }
-  }catch(e){ db=[]; projects=[]; }
+    if(Array.isArray(raw)){ db = raw; projects = []; production = null; }
+    else { db = Array.isArray(raw.glass) ? raw.glass : []; projects = Array.isArray(raw.projects) ? raw.projects : []; production = raw.production || null; }
+  }catch(e){ db=[]; projects=[]; production=null; }
   db.forEach(normalizeEntry);
+  ensureProduction();   // alte Dateien ohne production → Default-Stationen
 }
 function persist(){
   try{
-    localStorage.setItem(KEY, JSON.stringify({glass: db, projects: projects}));
+    localStorage.setItem(KEY, JSON.stringify({glass: db, projects: projects, production: production}));
     debouncedDriveSave();
   }catch(e){ toast('Speicher voll – Fotos reduzieren!','err') }
 }
@@ -1983,6 +2241,7 @@ function nav(s){
   if(s==='list') filter();
   if(s==='projects') renderProjectsList();
   if(s==='project') renderProjectDetail();
+  if(s==='production') renderProduction();
   window.scrollTo(0,0);
 }
 function newEntry(){ resetForm(); nav('form'); }
@@ -4320,6 +4579,229 @@ function seedDemoIfNeeded(){
   db.push(...fresh);
   localStorage.setItem(DEMO_SEED_FLAG,'true');
   persist(); filter();
+}
+
+// ════════════════════════ PRODUKTION — Render (Phase 10) ════════════════════════
+// Tab „🏭 Produktion": klickbares Flowchart der Stationen (SVG-frei, reines HTML/CSS, Branding),
+// Projekt-Selector für die Plan-Vorschau, Gesamt-Summary und ein Stationspanel (Konfiguration
+// ansehen/bearbeiten + projektbezogene Vorhersagen). Keine Chart-Bibliothek.
+let prodProjectId='', prodSelectedStation=null, prodEditing=false, prodEditDraft=null;
+function escH(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function seVal(id){ const e=g0(id); return e?e.value:''; }
+function seChk(id){ const e=g0(id); return e?e.checked:false; }
+function perLabel(p){ return p==='m2'?'m²':(p==='min'?'min':'Stück'); }
+function transformLabel(k){ const t=PROD_TRANSFORMS.find(x=>x.k===k); return t?t.label:k; }
+
+function setProdProject(id){ prodProjectId=id; renderProduction(); }
+function selectProdStation(id){
+  if(prodSelectedStation===id && !prodEditing){ prodSelectedStation=null; }
+  else { prodSelectedStation=id; prodEditing=false; prodEditDraft=null; }
+  renderProduction();
+}
+function renderProduction(){
+  ensureProduction();
+  const host=g0('prod-body'); if(!host) return;
+  const stations=stationsSorted();
+  let proj = prodProjectId ? projects.find(p=>p.id===prodProjectId) : null;
+  if(prodProjectId && !proj){ prodProjectId=''; }   // Projekt zwischenzeitlich gelöscht → zurücksetzen
+  const plan = proj ? derivePlan(proj) : null;
+  // Nur Projekte mit Zuschnitt-Allokationen liefern eine Mengen-Vorhersage.
+  const selectable = projects.filter(p=>Array.isArray(p.allocations)&&p.allocations.length);
+  const projOpts = ['<option value="">— Kein Projekt (nur Stationskonfiguration) —</option>']
+    .concat(selectable.map(p=>`<option value="${escH(p.id)}" ${p.id===prodProjectId?'selected':''}>${escH(p.name||p.id)} · ${p.allocations.length} Zuschnitte</option>`)).join('');
+  const intro = `<div class="prod-intro">🏭 <b>Produktions-Digital-Twin (Stufe 1).</b> Das Glas fließt durch ${stations.length} Stationen — klicke eine Station für Konfiguration, Rolle und Ressourcenprofil. Wähle ein Projekt, um die erwartete <b>Zeit</b>, den <b>Strom-/Wasserbedarf</b> und den <b>Abfall</b> pro Station und gesamt zu sehen.</div>`;
+  const toolbar = `<div class="prod-toolbar"><label for="prod-proj">Projekt-Plan:</label><select id="prod-proj" class="btn-ghost filt" onchange="setProdProject(this.value)">${projOpts}</select></div>`;
+  let summary;
+  if(proj){ summary = (plan && plan.hasAllocs)
+      ? prodSummaryHTML(proj, plan)
+      : `<div class="prod-est">Dieses Projekt hat keine Zuschnitt-Allokationen — keine Mengen-Vorhersage möglich.</div>`; }
+  else { summary = `<div class="prod-est">Kein Projekt gewählt — es werden die konfigurierten Stations-Richtwerte angezeigt. Wähle oben ein Projekt für die Mengen-/Zeit-/Abfall-Vorhersage.</div>`; }
+  const flow = flowchartHTML(stations, plan);
+  host.innerHTML = intro + toolbar + summary + flow + `<div id="prod-panel"></div>`;
+  renderProdPanel();
+}
+
+// ─── Flowchart (HTML/CSS, keine Lib) ───
+function flowchartHTML(stations, plan){
+  const nodes = stations.map((s,i)=>{
+    const arrow = i<stations.length-1 ? `<div class="flow-arrow">→</div>` : '';
+    return flowNodeHTML(s, plan) + arrow;
+  }).join('');
+  return `<div class="flow-wrap"><div class="flow">${nodes}</div></div>`;
+}
+function flowNodeHTML(s, plan){
+  const a = plan ? plan.byStation[s.id] : null;
+  const active = (s.id===prodSelectedStation) ? ' active' : '';
+  const wbadge = (s.wasteStreams||[]).length ? `<span class="wbadge">♻️ Abfall</span>` : '';
+  let stat = '';
+  if(a && a.stueck>0){
+    stat = `<div class="flow-stat"><span>${fmtNum(a.stueck,0)} Stk</span><span>${fmtDur(a.timeSec)}</span></div>`;
+  } else if(plan){
+    stat = `<div class="flow-stat" style="color:var(--subtext);font-weight:500;border-color:transparent">nicht im Plan</div>`;
+  }
+  return `<div class="flow-node${active}" onclick="selectProdStation('${s.id}')">
+    <div class="flow-head"><span class="flow-num">${s.order}</span><span class="flow-name">${escH(s.name)}</span></div>
+    <div class="flow-meta"><span class="xform">${escH(s.transform)}</span><span>👥 ${s.workers} Pers.</span>${wbadge}</div>
+    ${stat}
+  </div>`;
+}
+
+// ─── Gesamt-Summary (nur bei gewähltem Projekt) ───
+function prodSummaryHTML(proj, plan){
+  const t = plan.totals;
+  const wasteRows = Object.values(t.waste);
+  const totWasteM2 = wasteRows.reduce((s,w)=>s+w.m2,0);
+  const totWasteKg = wasteRows.reduce((s,w)=>s+w.kg,0);
+  const kpis = `
+    <div class="kpi"><div class="kpi-v">${fmtDur(t.timeSec)}</div><div class="kpi-l">Geschätzte Gesamtzeit</div></div>
+    <div class="kpi"><div class="kpi-v">${fmtNum(t.strom,1)} kWh</div><div class="kpi-l">Strom gesamt</div></div>
+    <div class="kpi"><div class="kpi-v">${fmtNum(t.wasser,0)} L</div><div class="kpi-l">Wasser gesamt</div></div>
+    <div class="kpi"><div class="kpi-v">${fmtNum(totWasteKg,0)} kg</div><div class="kpi-l">Abfall gesamt · ${fmtM2(totWasteM2)}</div></div>`;
+  const wasteDetail = wasteRows.length
+    ? `<div class="prod-est" style="margin:6px 0 0">Abfallströme: ` + wasteRows.map(w=>`${escH(w.name)} ${fmtNum(w.kg,0)} kg (${fmtM2(w.m2)})`).join(' · ') + `</div>`
+    : '';
+  return `<div class="prod-summary"><div class="dash-kpis">${kpis}</div></div>${wasteDetail}
+    <div class="prod-est" style="margin-top:6px">Schätzung auf Basis konfigurierter Richtwerte (sequentielle Summe, ohne Parallelität/Personalbesetzung) — wird mit echten Erfassungsdaten genauer.</div>`;
+}
+
+// ─── Stationspanel: Konfiguration ansehen / bearbeiten + Vorhersagen ───
+function renderProdPanel(){
+  const host=g0('prod-panel'); if(!host) return;
+  const stations=stationsSorted();
+  const s = prodSelectedStation ? stations.find(x=>x.id===prodSelectedStation) : null;
+  if(!s){ host.innerHTML = `<div class="sp-muted" style="padding:8px 2px">↑ Klicke eine Station, um Konfiguration und Vorhersagen zu sehen.</div>`; return; }
+  if(prodEditing && prodEditDraft){ host.innerHTML = stationEditHTML(prodEditDraft); return; }
+  const proj = prodProjectId ? projects.find(p=>p.id===prodProjectId) : null;
+  const plan = proj ? derivePlan(proj) : null;
+  host.innerHTML = stationViewHTML(s, plan);
+}
+function stationViewHTML(s, plan){
+  const a = plan ? plan.byStation[s.id] : null;
+  const passes = a && a.stueck>0;
+  const resList = (s.resources||[]).length
+    ? (s.resources||[]).map(r=>`<div class="sp-row"><span>${r.type==='wasser'?'💧 Wasser':'⚡ Strom'}</span><b>${fmtNum(r.factor,3)} ${r.unit} / ${perLabel(r.per)}</b></div>`).join('')
+    : `<div class="sp-muted">Keine Ressourcen-Richtwerte.</div>`;
+  const wsList = (s.wasteStreams||[]).length
+    ? (s.wasteStreams||[]).map(w=>`<div class="sp-row"><span>♻️ ${escH(w.name)}</span><b>${w.sortenrein?'<span class="wbadge">sortenrein</span> ':''}${w.contaminated?'<span class="wbadge">kontaminiert</span>':''}</b></div>`).join('')
+    : `<div class="sp-muted">Kein Abfallstrom.</div>`;
+  const cfgBlock = `<div class="sp-block"><h4>Konfiguration</h4>
+      <div class="sp-row"><span>Reihenfolge</span><b>Station ${s.order}</b></div>
+      <div class="sp-row"><span>Personen</span><b>${s.workers}</b></div>
+      <div class="sp-row"><span>Transform</span><b>${escH(s.transform)}</b></div>
+      <div class="sp-row"><span>Zeit-Richtwert</span><b>${fmtNum(s.timeEstimate.value,0)} ${s.timeEstimate.unit} / ${perLabel(s.timeEstimate.per)}</b></div>
+      ${s.transform==='qualityGate'?`<div class="sp-row"><span>Ausschussquote</span><b>${fmtNum(s.rejectRatePct,1)} %</b></div>`:''}
+    </div>`;
+  const resBlock = `<div class="sp-block"><h4>Ressourcenprofil</h4>${resList}</div>`;
+  const wsBlock = `<div class="sp-block"><h4>Abfallströme</h4>${wsList}</div>`;
+  let predBlock='';
+  if(passes){
+    const wasteRows = Object.values(a.waste);
+    const wasteHTML = wasteRows.length
+      ? wasteRows.map(w=>`<div class="sp-row"><span>♻️ ${escH(w.name)}</span><b>${fmtM2(w.m2)} · ${fmtNum(w.kg,1)} kg</b></div>`).join('')
+      : `<div class="sp-muted">Kein Abfall an dieser Station.</div>`;
+    const resHTML = (a.strom>0?`<div class="sp-row"><span>⚡ Strom</span><b>${fmtNum(a.strom,2)} kWh</b></div>`:'')
+                  + (a.wasser>0?`<div class="sp-row"><span>💧 Wasser</span><b>${fmtNum(a.wasser,1)} L</b></div>`:'');
+    predBlock = `<div class="sp-block" style="grid-column:1/-1"><h4>Erwartung für dieses Projekt <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--subtext)">— Schätzung</span></h4>
+        <div class="sp-row"><span>Durchlaufende Scheiben</span><b>${fmtNum(a.stueck,0)} Stk · ${fmtM2(a.m2)}</b></div>
+        <div class="sp-row"><span>Geschätzte Zeit</span><b>${fmtDur(a.timeSec)}</b></div>
+        ${resHTML}${wasteHTML}
+      </div>`;
+  } else if(prodProjectId){
+    predBlock = `<div class="sp-block" style="grid-column:1/-1"><h4>Erwartung für dieses Projekt</h4><div class="sp-muted">Diese Station wird im aktuellen Plan nicht durchlaufen (Eintrittspunkt der Einheiten liegt später).</div></div>`;
+  }
+  return `<div class="station-panel">
+    <div class="sp-head">
+      <div class="sp-title"><span class="flow-num">${s.order}</span> ${escH(s.name)} <span class="xform">${escH(transformLabel(s.transform))}</span></div>
+      <div class="sp-actions"><button class="btn btn-soft btn-sm" onclick="editStation('${s.id}')">✏️ Konfiguration bearbeiten</button></div>
+    </div>
+    <div class="sp-role">${escH(s.role||'')}</div>
+    <div class="sp-grid">${cfgBlock}${resBlock}${wsBlock}${predBlock}</div>
+  </div>`;
+}
+
+// ─── Stations-Edit-Form (persistiert + synchronisiert über persist()) ───
+function editStation(id){
+  const s = stationsSorted().find(x=>x.id===id); if(!s) return;
+  prodSelectedStation=id; prodEditDraft=JSON.parse(JSON.stringify(s)); prodEditing=true; renderProdPanel();
+}
+function cancelEditStation(){ prodEditing=false; prodEditDraft=null; renderProdPanel(); }
+function stationEditHTML(d){
+  const resRows = (d.resources||[]).map((r,i)=>`
+    <div class="res-row" data-i="${i}">
+      <select id="se_res_${i}_type" class="btn-ghost">
+        <option value="strom" ${r.type==='strom'?'selected':''}>⚡ Strom (kWh)</option>
+        <option value="wasser" ${r.type==='wasser'?'selected':''}>💧 Wasser (L)</option>
+      </select>
+      <input type="number" id="se_res_${i}_factor" value="${r.factor}" step="0.01" min="0" style="width:96px" placeholder="Faktor">
+      <span class="sp-muted">je</span>
+      <select id="se_res_${i}_per" class="btn-ghost">
+        <option value="stueck" ${r.per==='stueck'?'selected':''}>Stück</option>
+        <option value="m2" ${r.per==='m2'?'selected':''}>m²</option>
+        <option value="min" ${r.per==='min'?'selected':''}>min</option>
+      </select>
+      <button class="btn-x" title="Entfernen" onclick="removeResRow(${i})">✕</button>
+    </div>`).join('') || '<div class="sp-muted" style="margin-bottom:8px">Keine Ressourcen.</div>';
+  const wsRows = (d.wasteStreams||[]).map((w,i)=>`
+    <div class="ws-row" data-i="${i}">
+      <input type="text" id="se_ws_${i}_name" value="${escH(w.name)}" placeholder="Abfallstrom-Name" style="flex:1;min-width:160px">
+      <label class="sp-muted" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="se_ws_${i}_sortenrein" ${w.sortenrein?'checked':''}> sortenrein</label>
+      <label class="sp-muted" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="se_ws_${i}_contaminated" ${w.contaminated?'checked':''}> kontaminiert</label>
+      <button class="btn-x" title="Entfernen" onclick="removeWsRow(${i})">✕</button>
+    </div>`).join('') || '<div class="sp-muted" style="margin-bottom:8px">Kein Abfallstrom.</div>';
+  const xformOpts = PROD_TRANSFORMS.map(t=>`<option value="${t.k}" ${d.transform===t.k?'selected':''}>${escH(t.label)}</option>`).join('');
+  return `<div class="station-panel sp-edit">
+    <div class="sp-head">
+      <div class="sp-title"><span class="flow-num">${d.order}</span> Station bearbeiten</div>
+      <div class="sp-actions">
+        <button class="btn btn-primary btn-sm" onclick="saveStation('${d.id}')">💾 Speichern</button>
+        <button class="btn btn-ghost btn-sm" onclick="cancelEditStation()">Abbrechen</button>
+      </div>
+    </div>
+    <div class="fgrid">
+      <div class="fg"><label>Name</label><input type="text" id="se_name" value="${escH(d.name)}"></div>
+      <div class="fg"><label>Reihenfolge</label><input type="number" id="se_order" value="${d.order}" min="1" step="1"></div>
+      <div class="fg"><label>Personen</label><input type="number" id="se_workers" value="${d.workers}" min="1" step="1"></div>
+      <div class="fg"><label>Transform-Typ</label><select id="se_transform">${xformOpts}</select></div>
+      <div class="fg"><label>Zeit-Richtwert (Sekunden)</label><input type="number" id="se_time" value="${d.timeEstimate.value}" min="0" step="1"></div>
+      <div class="fg"><label>Zeit je</label><select id="se_timeper"><option value="stueck" ${d.timeEstimate.per==='stueck'?'selected':''}>Stück</option><option value="m2" ${d.timeEstimate.per==='m2'?'selected':''}>m²</option></select></div>
+      <div class="fg"><label>Ausschussquote (%) — nur bei qualityGate</label><input type="number" id="se_reject" value="${d.rejectRatePct||0}" min="0" max="100" step="0.1"></div>
+    </div>
+    <div class="sub-title">Ressourcen-Richtwerte</div>
+    <div id="se_res">${resRows}</div>
+    <button class="btn btn-ghost btn-sm" onclick="addResRow()">+ Ressource</button>
+    <div class="sub-title" style="margin-top:14px">Abfallströme</div>
+    <div id="se_ws">${wsRows}</div>
+    <button class="btn btn-ghost btn-sm" onclick="addWsRow()">+ Abfallstrom</button>
+  </div>`;
+}
+function readStationForm(){
+  const d=prodEditDraft; if(!d) return;
+  const nm=seVal('se_name').trim(); if(nm) d.name=nm;
+  d.order=Math.max(1, parseInt(seVal('se_order'),10)||d.order);
+  d.workers=Math.max(1, parseInt(seVal('se_workers'),10)||1);
+  d.transform=seVal('se_transform')||d.transform;
+  d.rejectRatePct=Math.max(0,Math.min(100, parseFloat(seVal('se_reject'))||0));
+  d.timeEstimate={ value:Math.max(0, parseFloat(seVal('se_time'))||0), unit:'sec', per:seVal('se_timeper')||'stueck' };
+  d.resources=(d.resources||[]).map((r,i)=>{ const type=seVal('se_res_'+i+'_type')||r.type||'strom';
+    return { type, unit: type==='wasser'?'l':'kWh', factor:Math.max(0, parseFloat(seVal('se_res_'+i+'_factor'))||0), per:seVal('se_res_'+i+'_per')||r.per||'stueck' }; });
+  d.wasteStreams=(d.wasteStreams||[]).map((w,i)=>({ id:w.id||('ws-'+Math.random().toString(36).slice(2,8)),
+    name:(seVal('se_ws_'+i+'_name')||'').trim()||w.name||'Abfall', sortenrein:seChk('se_ws_'+i+'_sortenrein'), contaminated:seChk('se_ws_'+i+'_contaminated') }));
+}
+function addResRow(){ readStationForm(); prodEditDraft.resources.push({type:'strom',unit:'kWh',factor:0,per:'stueck'}); renderProdPanel(); }
+function removeResRow(i){ readStationForm(); prodEditDraft.resources.splice(i,1); renderProdPanel(); }
+function addWsRow(){ readStationForm(); prodEditDraft.wasteStreams.push({id:'ws-'+Math.random().toString(36).slice(2,8),name:'',sortenrein:true,contaminated:false}); renderProdPanel(); }
+function removeWsRow(i){ readStationForm(); prodEditDraft.wasteStreams.splice(i,1); renderProdPanel(); }
+function saveStation(id){
+  readStationForm(); ensureProduction();
+  const idx=production.stations.findIndex(x=>x.id===id);
+  if(idx<0){ toast('Station nicht gefunden','err'); return; }
+  const role=production.stations[idx].role;                 // role bleibt erhalten (in Stufe 1 nicht editierbar)
+  production.stations[idx]=Object.assign({}, prodEditDraft, {id, role});
+  production.stations.sort((a,b)=>(a.order||0)-(b.order||0));
+  prodEditing=false; prodEditDraft=null;
+  persist();                                                // localStorage + Drive-Sync (Auto-Sync trägt production mit)
+  renderProduction();
+  toast('Station gespeichert','ok');
 }
 
 // Drag & Drop
