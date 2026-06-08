@@ -282,6 +282,36 @@ tr:last-child td{border-bottom:none}
 .wbadge{display:inline-block;font-size:.66rem;font-weight:600;padding:1px 7px;border-radius:20px;background:rgba(224,160,18,.16);color:#9A6B00;white-space:nowrap}
 /* Gesamt-Summary (KPIs) — nutzt .dash-kpis/.kpi aus dem Dashboard */
 .prod-summary{margin:8px 0 18px}
+/* Knotendiagramm (Phase 10, überarbeitet): absolut positionierte Knoten + SVG-Verbindungen.
+   Produktionsseite = digitales Whiteboard: der gepunktete Hintergrund liegt über der GANZEN
+   Section, Karten/Panels liegen als Vordergrund darauf. Ist das Diagramm breiter als der
+   Schirm, wächst die Section über die Viewport-Breite → die ganze Seite scrollt horizontal
+   (Miro-Look), nicht nur ein innerer Kasten. */
+#section-production{width:max-content;min-width:100%;background-image:radial-gradient(circle at 1px 1px, rgba(91,75,225,.11) 1.3px, transparent 1.3px);background-size:24px 24px;background-position:16px 12px}
+.prod-head,.prod-panel-host{max-width:1180px}
+.nd-wrap{margin:2px 0 10px;overflow:visible}
+.nd-canvas{position:relative}
+.nd-svg{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.nd-path{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.nd-path.seq{stroke:#AEB6C7}
+.nd-path.contam{stroke:#E0A012;stroke-dasharray:5 4}
+.nd-path.clean{stroke:#1F7A45}
+.nd-node{position:absolute;box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 12px;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:5px;transition:border-color .12s,box-shadow .12s,transform .12s;z-index:1}
+.nd-node:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow-lg);z-index:2}
+.nd-node.active{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary);z-index:2}
+.nd-head{display:flex;align-items:center;gap:6px}
+.nd-num{width:21px;height:21px;flex:0 0 auto;border-radius:50%;background:var(--primary);color:#fff;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.nd-ico{font-size:1.02rem;flex:0 0 auto}
+.nd-name{font-size:.81rem;font-weight:700;color:var(--text);line-height:1.12}
+.nd-metric{font-size:.74rem;color:var(--primary);font-weight:700;font-variant-numeric:tabular-nums}
+.nd-sub{font-size:.7rem;color:var(--subtext)}
+.nd-rec{border-color:#1F7A45;background:linear-gradient(180deg,#F2FBF6,#FFF)}
+.nd-rec.active{border-color:#1F7A45;box-shadow:0 0 0 2px #1F7A45}
+.nd-rec-split{display:flex;gap:10px;font-size:.72rem;font-weight:700;font-variant-numeric:tabular-nums}
+.nd-rec-split .rec-c{color:#9A6B00}.nd-rec-split .rec-s{color:#1F7A45}
+.nd-elabel{position:absolute;transform:translate(-50%,-50%);background:#FFF;border:1px solid var(--border);border-radius:8px;padding:1px 6px;font-size:.66rem;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.06);z-index:1}
+.nd-elabel.contam{color:#9A6B00;border-color:#E0A012}
+.nd-elabel.clean{color:#1F7A45;border-color:#1F7A45}
 /* Stationspanel */
 .station-panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-top:6px;box-shadow:var(--shadow)}
 .sp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:4px}
@@ -4582,16 +4612,74 @@ function seedDemoIfNeeded(){
 }
 
 // ════════════════════════ PRODUKTION — Render (Phase 10) ════════════════════════
-// Tab „🏭 Produktion": klickbares Flowchart der Stationen (SVG-frei, reines HTML/CSS, Branding),
-// Projekt-Selector für die Plan-Vorschau, Gesamt-Summary und ein Stationspanel (Konfiguration
-// ansehen/bearbeiten + projektbezogene Vorhersagen). Keine Chart-Bibliothek.
-let prodProjectId='', prodSelectedStation=null, prodEditing=false, prodEditDraft=null;
+// Tab „🏭 Produktion": Knotendiagramm der Stationen (HTML/CSS + SVG-Verbindungen, keine Lib,
+// Branding). Die Prozessschritte sind durch Kanten verbunden; die Sekundärrohstoffe (Scherben)
+// fließen über farbcodierte Kanten in einen eigenen Recycling-Knoten (kontaminiert vs sortenrein).
+// Oben: Produktionszeitraum-Filter + Projektauswahl. Klick auf Knoten/Recycling → Detail-Panel.
+const RECYCLING_ID='__recycling__';
+// Station-Icon je fester Seed-ID (Fallback ⚙️). Recycling hat ein eigenes ♻️.
+const PROD_STATION_ICONS={ 'st-ausglasen':'🔓','st-auftrennen':'🔪','st-randabschnitt':'📐','st-waschen':'🚿','st-pruefung':'🔍','st-sortieren':'🗂️','st-zuschnitt':'🪚' };
+let prodProjectId='', prodPeriod='all', prodSelectedStation=null, prodEditing=false, prodEditDraft=null;
 function escH(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function seVal(id){ const e=g0(id); return e?e.value:''; }
 function seChk(id){ const e=g0(id); return e?e.checked:false; }
 function perLabel(p){ return p==='m2'?'m²':(p==='min'?'min':'Stück'); }
 function transformLabel(k){ const t=PROD_TRANSFORMS.find(x=>x.k===k); return t?t.label:k; }
+function stationIcon(s){ return PROD_STATION_ICONS[s.id] || '⚙️'; }
 
+// ─── Produktionszeitraum (Filter über Projekt-createdAt) + Mehrprojekt-Aggregation ───
+function periodStart(period){
+  const now=new Date();
+  if(period==='month'){ const d=new Date(now); d.setMonth(d.getMonth()-1); return d; }
+  if(period==='quarter'){ const d=new Date(now); d.setMonth(d.getMonth()-3); return d; }
+  if(period==='year'){ const d=new Date(now); d.setFullYear(d.getFullYear()-1); return d; }
+  return null;   // 'all' → kein Startdatum
+}
+// Projekte mit Zuschnitt-Allokationen im gewählten Zeitraum (nach Erstellungsdatum).
+function projectsInPeriod(){
+  const start=periodStart(prodPeriod);
+  return projects.filter(p=>{
+    if(!(Array.isArray(p.allocations)&&p.allocations.length)) return false;
+    if(!start) return true;
+    const t=new Date(p.createdAt||p.updatedAt||0).getTime();
+    return isFinite(t) && t>=start.getTime();
+  });
+}
+// Summiert mehrere Einzel-Pläne (derivePlan) zu einem Gesamtplan gleicher Form.
+function combinePlans(plans){
+  const stations=stationsSorted();
+  const agg={}; stations.forEach(s=>agg[s.id]={stueck:0,m2:0,timeSec:0,strom:0,wasser:0,waste:{}});
+  const tot={timeSec:0,strom:0,wasser:0,waste:{}};
+  const mergeWaste=(target,w)=>{ if(!target[w.id]) target[w.id]={id:w.id,name:w.name,m2:0,kg:0,sortenrein:w.sortenrein,contaminated:w.contaminated}; target[w.id].m2+=w.m2; target[w.id].kg+=w.kg; };
+  plans.forEach(pl=>{
+    stations.forEach(s=>{ const a=pl.byStation[s.id]; if(!a) return; const b=agg[s.id];
+      b.stueck+=a.stueck; b.m2+=a.m2; b.timeSec+=a.timeSec; b.strom+=a.strom; b.wasser+=a.wasser;
+      Object.values(a.waste).forEach(w=>mergeWaste(b.waste,w)); });
+    tot.timeSec+=pl.totals.timeSec; tot.strom+=pl.totals.strom; tot.wasser+=pl.totals.wasser;
+    Object.values(pl.totals.waste).forEach(w=>mergeWaste(tot.waste,w));
+  });
+  return { byStation:agg, totals:tot, hasAllocs:true };
+}
+// Plan für die aktuelle Auswahl: ein Projekt ODER alle Projekte im Zeitraum (aggregiert).
+function planForSelection(){
+  const list=projectsInPeriod();
+  let chosen;
+  if(prodProjectId){ const p=list.find(x=>x.id===prodProjectId); chosen = p?[p]:[]; }
+  else chosen=list;
+  if(!chosen.length) return null;
+  return combinePlans(chosen.map(p=>derivePlan(p)));
+}
+// Abfall-Aggregat fürs Recycling, getrennt nach Kontamination (getrennt gesammelt).
+function recyclingTotals(plan){
+  const out={ contaminated:{m2:0,kg:0,streams:[]}, clean:{m2:0,kg:0,streams:[]}, totalM2:0, totalKg:0 };
+  if(plan) Object.values(plan.totals.waste).forEach(w=>{
+    const bin = w.contaminated ? out.contaminated : out.clean;
+    bin.m2+=w.m2; bin.kg+=w.kg; bin.streams.push(w);
+    out.totalM2+=w.m2; out.totalKg+=w.kg;
+  });
+  return out;
+}
+function setProdPeriod(v){ prodPeriod=v; prodProjectId=''; renderProduction(); }
 function setProdProject(id){ prodProjectId=id; renderProduction(); }
 function selectProdStation(id){
   if(prodSelectedStation===id && !prodEditing){ prodSelectedStation=null; }
@@ -4602,52 +4690,125 @@ function renderProduction(){
   ensureProduction();
   const host=g0('prod-body'); if(!host) return;
   const stations=stationsSorted();
-  let proj = prodProjectId ? projects.find(p=>p.id===prodProjectId) : null;
-  if(prodProjectId && !proj){ prodProjectId=''; }   // Projekt zwischenzeitlich gelöscht → zurücksetzen
-  const plan = proj ? derivePlan(proj) : null;
-  // Nur Projekte mit Zuschnitt-Allokationen liefern eine Mengen-Vorhersage.
-  const selectable = projects.filter(p=>Array.isArray(p.allocations)&&p.allocations.length);
-  const projOpts = ['<option value="">— Kein Projekt (nur Stationskonfiguration) —</option>']
-    .concat(selectable.map(p=>`<option value="${escH(p.id)}" ${p.id===prodProjectId?'selected':''}>${escH(p.name||p.id)} · ${p.allocations.length} Zuschnitte</option>`)).join('');
-  const intro = `<div class="prod-intro">🏭 <b>Produktions-Digital-Twin (Stufe 1).</b> Das Glas fließt durch ${stations.length} Stationen — klicke eine Station für Konfiguration, Rolle und Ressourcenprofil. Wähle ein Projekt, um die erwartete <b>Zeit</b>, den <b>Strom-/Wasserbedarf</b> und den <b>Abfall</b> pro Station und gesamt zu sehen.</div>`;
-  const toolbar = `<div class="prod-toolbar"><label for="prod-proj">Projekt-Plan:</label><select id="prod-proj" class="btn-ghost filt" onchange="setProdProject(this.value)">${projOpts}</select></div>`;
-  let summary;
-  if(proj){ summary = (plan && plan.hasAllocs)
-      ? prodSummaryHTML(proj, plan)
-      : `<div class="prod-est">Dieses Projekt hat keine Zuschnitt-Allokationen — keine Mengen-Vorhersage möglich.</div>`; }
-  else { summary = `<div class="prod-est">Kein Projekt gewählt — es werden die konfigurierten Stations-Richtwerte angezeigt. Wähle oben ein Projekt für die Mengen-/Zeit-/Abfall-Vorhersage.</div>`; }
-  const flow = flowchartHTML(stations, plan);
-  host.innerHTML = intro + toolbar + summary + flow + `<div id="prod-panel"></div>`;
+  const periodProjects=projectsInPeriod();
+  if(prodProjectId && !periodProjects.find(p=>p.id===prodProjectId)) prodProjectId=''; // Auswahl nicht mehr im Zeitraum
+  const plan=planForSelection();
+  // Toolbar: Produktionszeitraum + Projektauswahl
+  const periodOpts=[['all','Gesamt'],['year','Letztes Jahr'],['quarter','Letztes Quartal'],['month','Letzter Monat']]
+    .map(([v,l])=>`<option value="${v}" ${prodPeriod===v?'selected':''}>${l}</option>`).join('');
+  const allLabel=`Alle Projekte${prodPeriod!=='all'?' im Zeitraum':''} (${periodProjects.length})`;
+  const projOpts=[`<option value="">${escH(allLabel)}</option>`]
+    .concat(periodProjects.map(p=>`<option value="${escH(p.id)}" ${p.id===prodProjectId?'selected':''}>${escH(p.name||p.id)} · ${p.allocations.length} Zuschnitte</option>`)).join('');
+  const intro=`<div class="prod-intro">🏭 <b>Produktions-Digital-Twin (Stufe 1).</b> Das Glas fließt durch die Stationen (Knoten); die Sekundärrohstoffe (Scherben) fließen in den <b>♻️ Recycling-Knoten</b> — <span style="color:#9A6B00;font-weight:700">kontaminiert</span> (Randabschnitt) und <span style="color:#1F7A45;font-weight:700">sortenrein</span> (Reject + Verschnitt) getrennt. Klicke einen Knoten für Details. Wähle Zeitraum/Projekt für die Mengen-Vorhersage.</div>`;
+  const toolbar=`<div class="prod-toolbar">
+      <label for="prod-period">Produktionszeitraum:</label>
+      <select id="prod-period" class="btn-ghost filt" onchange="setProdPeriod(this.value)">${periodOpts}</select>
+      <label for="prod-proj">Projekt:</label>
+      <select id="prod-proj" class="btn-ghost filt" onchange="setProdProject(this.value)">${projOpts}</select>
+    </div>`;
+  const summary = plan
+    ? prodSummaryHTML(plan)
+    : `<div class="prod-est">Keine Produktionsdaten im gewählten Zeitraum/Projekt — wähle einen anderen Zeitraum oder ein Projekt mit Zuschnitt-Allokationen. (Das Knotendiagramm zeigt weiterhin die konfigurierten Stationen.)</div>`;
+  const diagram=nodeDiagramHTML(stations, plan);
+  // Kopfbereich (Intro/Toolbar/Summary) und Panel auf normale Breite begrenzen — das Diagramm
+  // darf voll breit werden und die Section über die Viewport-Breite wachsen lassen (Whiteboard-Scroll).
+  host.innerHTML = `<div class="prod-head">${intro}${toolbar}${summary}</div>` + diagram + `<div id="prod-panel" class="prod-panel-host"></div>`;
   renderProdPanel();
 }
 
-// ─── Flowchart (HTML/CSS, keine Lib) ───
-function flowchartHTML(stations, plan){
-  const nodes = stations.map((s,i)=>{
-    const arrow = i<stations.length-1 ? `<div class="flow-arrow">→</div>` : '';
-    return flowNodeHTML(s, plan) + arrow;
-  }).join('');
-  return `<div class="flow-wrap"><div class="flow">${nodes}</div></div>`;
+// ─── Knotendiagramm (HTML-Knoten + SVG-Verbindungen, keine Lib) ───
+// Prozessschritte links→rechts (leicht versetzt für „Kabel"-Optik), verbunden durch sequentielle
+// Kanten. Jeder Abfallstrom einer Station bekommt eine Kante zum zentralen Recycling-Knoten,
+// farbcodiert nach Kontamination. Datengetrieben (übersteht Reihenfolge-/Konfig-Änderungen).
+function arrowMarker(id,color){ return `<marker id="${id}" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="${color}"/></marker>`; }
+// Orthogonaler Pfad mit abgerundeten Ecken — waagerecht→senkrecht→waagerecht (sequentielle Kanten).
+function orthAcross(ax,ay,bx,by,midX,r){
+  if(Math.abs(ay-by)<0.5) return `M ${ax} ${ay} L ${bx} ${by}`;
+  const dV=by>ay?1:-1;
+  const rr=Math.max(0,Math.min(r,Math.abs(midX-ax),Math.abs(bx-midX),Math.abs(by-ay)/2));
+  return `M ${ax} ${ay} L ${midX-rr} ${ay} Q ${midX} ${ay} ${midX} ${ay+dV*rr} L ${midX} ${by-dV*rr} Q ${midX} ${by} ${midX+rr} ${by} L ${bx} ${by}`;
 }
-function flowNodeHTML(s, plan){
-  const a = plan ? plan.byStation[s.id] : null;
-  const active = (s.id===prodSelectedStation) ? ' active' : '';
-  const wbadge = (s.wasteStreams||[]).length ? `<span class="wbadge">♻️ Abfall</span>` : '';
-  let stat = '';
-  if(a && a.stueck>0){
-    stat = `<div class="flow-stat"><span>${fmtNum(a.stueck,0)} Stk</span><span>${fmtDur(a.timeSec)}</span></div>`;
-  } else if(plan){
-    stat = `<div class="flow-stat" style="color:var(--subtext);font-weight:500;border-color:transparent">nicht im Plan</div>`;
+// Orthogonaler Pfad — senkrecht→waagerecht→senkrecht (Abfall-Kanten zum Recycling-Knoten).
+function orthDown(sx,sy,ex,ey,midY,r){
+  if(Math.abs(ex-sx)<0.5) return `M ${sx} ${sy} L ${ex} ${ey}`;
+  const dH=ex>sx?1:-1;
+  const rr=Math.max(0,Math.min(r,Math.abs(ex-sx)/2,Math.abs(midY-sy),Math.abs(ey-midY)));
+  return `M ${sx} ${sy} L ${sx} ${midY-rr} Q ${sx} ${midY} ${sx+dH*rr} ${midY} L ${ex-dH*rr} ${midY} Q ${ex} ${midY} ${ex} ${midY+rr} L ${ex} ${ey}`;
+}
+function nodeDiagramHTML(stations, plan){
+  const NODE_W=152, NODE_H=104, PITCH=194, X0=18, Y_EVEN=18, Y_ODD=58;
+  const n=stations.length;
+  const canvasW=Math.max(X0 + (n-1)*PITCH + NODE_W + 18, 760);
+  const recW=250, recH=116, recX=Math.max(40, Math.round((canvasW-recW)/2)), recY=398;
+  const canvasH=recY+recH+18;
+  const nx=i=>X0+i*PITCH, ny=i=>(i%2===0)?Y_EVEN:Y_ODD, cy=i=>ny(i)+NODE_H/2;
+  // Abfall-Kanten datengetrieben sammeln; jede bekommt eine eigene horizontale „Bus"-Ebene.
+  const wasteEdges=[];
+  stations.forEach((s,i)=>(s.wasteStreams||[]).forEach(w=>wasteEdges.push({i,s,w})));
+  const spread=recW/(wasteEdges.length+1), recEntryX=k=>recX+spread*(k+1);
+  const maxBottom=Math.max(Y_EVEN,Y_ODD)+NODE_H, busY=k=>maxBottom+34+k*16;
+  // SVG-Pfade (orthogonal, abgerundete Ecken)
+  let paths='';
+  for(let i=0;i<n-1;i++){
+    const ax=nx(i)+NODE_W, ay=cy(i), bx=nx(i+1), by=cy(i+1);
+    paths+=`<path class="nd-path seq" d="${orthAcross(ax,ay,bx,by,(ax+bx)/2,10)}" marker-end="url(#mk-seq)"/>`;
   }
-  return `<div class="flow-node${active}" onclick="selectProdStation('${s.id}')">
-    <div class="flow-head"><span class="flow-num">${s.order}</span><span class="flow-name">${escH(s.name)}</span></div>
-    <div class="flow-meta"><span class="xform">${escH(s.transform)}</span><span>👥 ${s.workers} Pers.</span>${wbadge}</div>
-    ${stat}
+  wasteEdges.forEach((e,k)=>{
+    const sx=nx(e.i)+NODE_W/2, sy=ny(e.i)+NODE_H, ex=recEntryX(k), ey=recY;
+    const cls=e.w.contaminated?'contam':'clean', mk=e.w.contaminated?'mk-contam':'mk-clean';
+    paths+=`<path class="nd-path ${cls}" d="${orthDown(sx,sy,ex,ey,busY(k),9)}" marker-end="url(#${mk})"/>`;
+  });
+  const svg=`<svg class="nd-svg" width="${canvasW}" height="${canvasH}" viewBox="0 0 ${canvasW} ${canvasH}">
+    <defs>${arrowMarker('mk-seq','#AEB6C7')}${arrowMarker('mk-contam','#E0A012')}${arrowMarker('mk-clean','#1F7A45')}</defs>${paths}</svg>`;
+  // Knoten
+  const nodes=stations.map((s,i)=>ndNodeHTML(s, plan, nx(i), ny(i), NODE_W, NODE_H)).join('');
+  const recNode=ndRecyclingHTML(plan, recX, recY, recW, recH);
+  // Kanten-Labels (absolut positioniert über dem Canvas)
+  let labels='';
+  for(let i=0;i<n-1 && plan;i++){
+    const a=plan.byStation[stations[i+1].id];
+    if(a && a.m2>0){ const lx=(nx(i)+NODE_W+nx(i+1))/2, ly=(cy(i)+cy(i+1))/2; labels+=`<div class="nd-elabel" style="left:${lx}px;top:${ly}px">${fmtM2(a.m2)}</div>`; }
+  }
+  wasteEdges.forEach((e,k)=>{
+    const sx=nx(e.i)+NODE_W/2, ex=recEntryX(k), lx=(sx+ex)/2, ly=busY(k)-9;
+    let txt=e.w.contaminated?'kontaminiert':'sortenrein';
+    if(plan){ const a=plan.byStation[e.s.id], wv=a&&a.waste[e.w.id]; if(wv && wv.kg>0) txt=`${fmtNum(wv.kg,1)} kg`; }
+    labels+=`<div class="nd-elabel ${e.w.contaminated?'contam':'clean'}" style="left:${lx}px;top:${ly}px">${escH(txt)}</div>`;
+  });
+  return `<div class="nd-wrap"><div class="nd-canvas" style="width:${canvasW}px;height:${canvasH}px">${svg}${nodes}${recNode}${labels}</div></div>`;
+}
+function ndNodeHTML(s, plan, x, y, w, h){
+  const a=plan?plan.byStation[s.id]:null;
+  const active=(s.id===prodSelectedStation)?' active':'';
+  const hasWaste=(s.wasteStreams||[]).length>0;
+  let metric;
+  if(a && a.stueck>0) metric=`<div class="nd-metric">${fmtNum(a.stueck,0)} Stk · ${fmtDur(a.timeSec)}</div>`;
+  else if(plan) metric=`<div class="nd-sub">nicht im Plan</div>`;
+  else metric=`<div class="nd-sub">👥 ${s.workers} Pers.${hasWaste?' · ♻️':''}</div>`;
+  return `<div class="nd-node${active}" style="left:${x}px;top:${y}px;width:${w}px;min-height:${h}px" onclick="selectProdStation('${s.id}')">
+    <div class="nd-head"><span class="nd-num">${s.order}</span><span class="nd-ico">${stationIcon(s)}</span><span class="nd-name">${escH(s.name)}</span></div>
+    <span class="xform">${escH(s.transform)}</span>
+    ${metric}
+  </div>`;
+}
+function ndRecyclingHTML(plan, x, y, w, h){
+  const active=(prodSelectedStation===RECYCLING_ID)?' active':'';
+  let body;
+  if(plan){
+    const r=recyclingTotals(plan);
+    body=`<div class="nd-metric" style="color:#1F7A45">${fmtNum(r.totalKg,0)} kg · ${fmtM2(r.totalM2)}</div>
+      <div class="nd-rec-split"><span class="rec-c">🟠 ${fmtNum(r.contaminated.kg,0)} kg</span><span class="rec-s">🟢 ${fmtNum(r.clean.kg,0)} kg</span></div>`;
+  } else {
+    body=`<div class="nd-sub">Sammelt Scherben aus Randabschnitt, Prüfung &amp; Zuschnitt — getrennt nach Kontamination.</div>`;
+  }
+  return `<div class="nd-node nd-rec${active}" style="left:${x}px;top:${y}px;width:${w}px;min-height:${h}px" onclick="selectProdStation('${RECYCLING_ID}')">
+    <div class="nd-head"><span class="nd-ico">♻️</span><span class="nd-name">Recycling — Sekundärrohstoffe</span></div>
+    ${body}
   </div>`;
 }
 
-// ─── Gesamt-Summary (nur bei gewähltem Projekt) ───
-function prodSummaryHTML(proj, plan){
+// ─── Gesamt-Summary (bei gewähltem Zeitraum/Projekt) ───
+function prodSummaryHTML(plan){
   const t = plan.totals;
   const wasteRows = Object.values(t.waste);
   const totWasteM2 = wasteRows.reduce((s,w)=>s+w.m2,0);
@@ -4664,16 +4825,45 @@ function prodSummaryHTML(proj, plan){
     <div class="prod-est" style="margin-top:6px">Schätzung auf Basis konfigurierter Richtwerte (sequentielle Summe, ohne Parallelität/Personalbesetzung) — wird mit echten Erfassungsdaten genauer.</div>`;
 }
 
-// ─── Stationspanel: Konfiguration ansehen / bearbeiten + Vorhersagen ───
+// ─── Detail-Panel: Station (Konfig/Vorhersage) oder Recycling-Knoten ───
 function renderProdPanel(){
   const host=g0('prod-panel'); if(!host) return;
+  const plan=planForSelection();
+  if(prodSelectedStation===RECYCLING_ID){ host.innerHTML=recyclingPanelHTML(plan); return; }
   const stations=stationsSorted();
   const s = prodSelectedStation ? stations.find(x=>x.id===prodSelectedStation) : null;
-  if(!s){ host.innerHTML = `<div class="sp-muted" style="padding:8px 2px">↑ Klicke eine Station, um Konfiguration und Vorhersagen zu sehen.</div>`; return; }
+  if(!s){ host.innerHTML = `<div class="sp-muted" style="padding:8px 2px">↑ Klicke einen Stations-Knoten oder den ♻️ Recycling-Knoten, um Details zu sehen.</div>`; return; }
   if(prodEditing && prodEditDraft){ host.innerHTML = stationEditHTML(prodEditDraft); return; }
-  const proj = prodProjectId ? projects.find(p=>p.id===prodProjectId) : null;
-  const plan = proj ? derivePlan(proj) : null;
   host.innerHTML = stationViewHTML(s, plan);
+}
+// Recycling-Panel: Sekundärrohstoffe getrennt nach Kontamination (getrennt gesammelt).
+function recyclingPanelHTML(plan){
+  const intro=`<div class="sp-role">Hier fließen die Sekundärrohstoffe (Scherben) aus den Prozessschritten zusammen — <b>kontaminiert und sortenrein getrennt</b>, weil wir sie auch getrennt sammeln.</div>`;
+  const r=recyclingTotals(plan);
+  const streamRows = bin => bin.streams.length
+    ? bin.streams.map(w=>`<div class="sp-row"><span>♻️ ${escH(w.name)}</span><b>${fmtM2(w.m2)} · ${fmtNum(w.kg,1)} kg</b></div>`).join('')
+    : `<div class="sp-muted">Im gewählten Zeitraum/Projekt nichts angefallen.</div>`;
+  const sumRow = (label,bin) => `<div class="sp-row" style="border-top:2px solid var(--border);margin-top:4px;padding-top:6px"><span><b>${label}</b></span><b>${fmtM2(bin.m2)} · ${fmtNum(bin.kg,1)} kg</b></div>`;
+  const head=`<div class="sp-head">
+      <div class="sp-title"><span class="nd-ico">♻️</span> Recycling — Sekundärrohstoffe</div>
+      ${plan?`<div class="sp-actions"><span class="xform" style="background:rgba(31,122,69,.12);color:#1F7A45">Σ ${fmtNum(r.totalKg,0)} kg · ${fmtM2(r.totalM2)}</span></div>`:''}
+    </div>`;
+  const note = plan
+    ? `<div class="prod-est" style="margin-top:12px">Kontaminierte Scherben (Randabschnitt-Cullet, Dichtstoffreste) und sortenreine Scherben (Reject-Scheiben + Zuschnitt-Verschnitt) werden getrennt gesammelt — Schätzung auf Basis der konfigurierten Richtwerte.</div>`
+    : `<div class="prod-est" style="margin-top:12px">Wähle oben einen Zeitraum/ein Projekt, um die anfallenden Scherben-Mengen zu sehen. Die Trennung kontaminiert/sortenrein bleibt immer erhalten.</div>`;
+  return `<div class="station-panel">${head}${intro}
+    <div class="sp-grid">
+      <div class="sp-block" style="border-color:#E0A012">
+        <h4 style="color:#9A6B00">🟠 Kontaminiert — getrennt gesammelt</h4>
+        ${streamRows(r.contaminated)}
+        ${sumRow('Summe kontaminiert', r.contaminated)}
+      </div>
+      <div class="sp-block" style="border-color:#1F7A45">
+        <h4 style="color:#1F7A45">🟢 Sortenrein — ohne Kontamination</h4>
+        ${streamRows(r.clean)}
+        ${sumRow('Summe sortenrein', r.clean)}
+      </div>
+    </div>${note}</div>`;
 }
 function stationViewHTML(s, plan){
   const a = plan ? plan.byStation[s.id] : null;
