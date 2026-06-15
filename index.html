@@ -262,10 +262,12 @@ tr:last-child td{border-bottom:none}
 .dash-empty{color:var(--subtext);font-size:.85rem}
 
 /* ── Produktion: Flowchart + Stationspanel (Phase 10) ── */
-.prod-intro{background:#EEF0FF;border-left:4px solid var(--primary);padding:12px 16px;border-radius:8px;font-size:.86rem;color:var(--text);margin-bottom:16px;line-height:1.5}
-.prod-toolbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:8px}
-.prod-toolbar label{font-size:.8rem;color:var(--subtext);font-weight:600}
-.prod-toolbar select{max-width:340px}
+.prod-intro{background:linear-gradient(180deg,#F3F1FE,#FBFBFF);border:1px solid #E4E0FB;border-left:4px solid var(--primary);padding:11px 15px;border-radius:12px;font-size:.84rem;color:var(--text);margin-bottom:14px;line-height:1.5}
+.prod-toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 14px;box-shadow:var(--shadow)}
+.prod-toolbar .tb-field{display:flex;align-items:center;gap:8px}
+.prod-toolbar label{font-size:.72rem;color:var(--subtext);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.prod-toolbar select{max-width:340px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:7px 10px;font-size:.86rem;font-weight:600;color:var(--text)}
+.prod-toolbar .tb-sep{width:1px;align-self:stretch;background:var(--border);margin:2px 0}
 .prod-est{font-size:.74rem;color:var(--subtext);font-style:italic;margin:4px 0 16px}
 .flow-wrap{overflow-x:auto;padding:6px 2px 14px;-webkit-overflow-scrolling:touch}
 .flow{display:flex;align-items:stretch;min-width:max-content}
@@ -282,29 +284,65 @@ tr:last-child td{border-bottom:none}
 .wbadge{display:inline-block;font-size:.66rem;font-weight:600;padding:1px 7px;border-radius:20px;background:rgba(224,160,18,.16);color:#9A6B00;white-space:nowrap}
 /* Gesamt-Summary (KPIs) — nutzt .dash-kpis/.kpi aus dem Dashboard */
 .prod-summary{margin:8px 0 18px}
-/* Knotendiagramm (Phase 10, überarbeitet): absolut positionierte Knoten + SVG-Verbindungen.
-   Produktionsseite = digitales Whiteboard: der gepunktete Hintergrund liegt über der GANZEN
-   Section, Karten/Panels liegen als Vordergrund darauf. Ist das Diagramm breiter als der
-   Schirm, wächst die Section über die Viewport-Breite → die ganze Seite scrollt horizontal
-   (Miro-Look), nicht nur ein innerer Kasten. */
-#section-production{width:max-content;min-width:100%;background-image:radial-gradient(circle at 1px 1px, rgba(91,75,225,.11) 1.3px, transparent 1.3px);background-size:24px 24px;background-position:16px 12px}
-.prod-head,.prod-panel-host{max-width:1180px}
-.nd-wrap{margin:2px 0 10px;overflow:visible}
-.nd-canvas{position:relative}
+/* Unteres Auswertungs-Panel (Phase 11): KPIs + Balken je Station + Stationsübersicht-Tabelle */
+.prod-analytics{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-top:6px;box-shadow:var(--shadow)}
+.pa-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pa-title{font-size:1.06rem;font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px}
+.pa-cols{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:860px){.pa-cols{grid-template-columns:1fr 1fr}}
+.pa-block h4{font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* Segmentierter Metrik-Umschalter */
+.seg{display:inline-flex;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:8px;padding:4px 10px;font-size:.76rem;font-weight:700;color:var(--subtext);cursor:pointer;white-space:nowrap}
+.seg button.active{background:var(--primary);color:#fff;box-shadow:0 2px 6px rgba(91,75,225,.35)}
+/* Horizontale Balken je Station */
+.pbar-row{display:grid;grid-template-columns:128px 1fr auto;align-items:center;gap:10px;margin-bottom:9px}
+.pbar-lbl{font-size:.78rem;color:var(--text);font-weight:600;display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pbar-lbl .pbar-ico{flex:0 0 auto}
+.pbar-track{height:14px;background:var(--bg);border-radius:7px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:7px;background:linear-gradient(90deg,var(--accent),var(--primary));min-width:2px;transition:width .25s}
+.pbar-fill.amber{background:linear-gradient(90deg,#F0BE4D,#E0A012)}
+.pbar-val{font-size:.78rem;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Stationsübersicht-Tabelle */
+.ptable{width:100%;border-collapse:collapse;font-size:.8rem}
+.ptable th,.ptable td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ptable th{font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--subtext);font-weight:700}
+.ptable th:first-child,.ptable td:first-child{text-align:left;font-weight:600}
+.ptable tbody tr:hover{background:var(--bg)}
+.ptable .pt-tot td{border-top:2px solid var(--border);border-bottom:0;font-weight:800;color:var(--text)}
+.pa-foot{font-size:.74rem;color:var(--subtext);font-style:italic;margin-top:12px}
+/* Knotendiagramm (Phase 10, überarbeitet + Phase 11 Redesign): absolut positionierte Knoten +
+   SVG-Verbindungen in einem begrenzten Viewport. Der innere Canvas wird per CSS-transform
+   gezoomt/verschoben (Miro-artig); der gepunktete Whiteboard-Hintergrund liegt im Viewport und
+   folgt Zoom/Pan über background-position/-size. Keine Page-Überbreite mehr — das Diagramm
+   lebt im eigenen Kasten mit Zoom-Steuerung. */
+#section-production .sec-hd h1{margin-bottom:14px}
+.prod-head,.prod-panel-host,.prod-analytics-host{max-width:1180px}
+.nd-viewport{position:relative;height:clamp(420px,56vh,600px);margin:0 0 14px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#FCFCFE;background-image:radial-gradient(circle at 1px 1px, rgba(91,75,225,.13) 1.3px, transparent 1.3px);background-size:24px 24px;cursor:grab;box-shadow:inset 0 1px 3px rgba(16,24,40,.05);touch-action:none;user-select:none}
+.nd-viewport.panning{cursor:grabbing}
+.nd-canvas{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
 .nd-svg{position:absolute;inset:0;pointer-events:none;overflow:visible}
 .nd-path{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .nd-path.seq{stroke:#AEB6C7}
 .nd-path.contam{stroke:#E0A012;stroke-dasharray:5 4}
 .nd-path.clean{stroke:#1F7A45}
-.nd-node{position:absolute;box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 12px;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:5px;transition:border-color .12s,box-shadow .12s,transform .12s;z-index:1}
-.nd-node:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow-lg);z-index:2}
-.nd-node.active{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary);z-index:2}
-.nd-head{display:flex;align-items:center;gap:6px}
-.nd-num{width:21px;height:21px;flex:0 0 auto;border-radius:50%;background:var(--primary);color:#fff;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.nd-node{position:absolute;box-sizing:border-box;background:rgba(255,255,255,.78);backdrop-filter:blur(9px) saturate(1.25);-webkit-backdrop-filter:blur(9px) saturate(1.25);border:1px solid rgba(255,255,255,.85);border-radius:16px;padding:11px 13px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.06),0 10px 26px -10px rgba(16,24,40,.22);display:flex;flex-direction:column;gap:6px;transition:box-shadow .14s,transform .14s;z-index:1}
+.nd-node:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(16,24,40,.07),0 16px 34px -10px rgba(91,75,225,.34);z-index:3}
+.nd-node.active{box-shadow:0 0 0 2px var(--primary),0 14px 30px -10px rgba(91,75,225,.4);z-index:3}
+.nd-head{display:flex;align-items:center;gap:7px}
+.nd-num{width:22px;height:22px;flex:0 0 auto;border-radius:7px;background:linear-gradient(180deg,var(--accent),var(--primary));color:#fff;font-size:.74rem;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(91,75,225,.4)}
 .nd-ico{font-size:1.02rem;flex:0 0 auto}
-.nd-name{font-size:.81rem;font-weight:700;color:var(--text);line-height:1.12}
-.nd-metric{font-size:.74rem;color:var(--primary);font-weight:700;font-variant-numeric:tabular-nums}
+.nd-name{font-size:.82rem;font-weight:700;color:var(--text);line-height:1.12}
+.nd-metric{font-size:1.04rem;color:var(--text);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.nd-metric .nd-unit{font-size:.72rem;font-weight:700;color:var(--subtext)}
+.nd-msub{font-size:.7rem;color:var(--subtext);font-weight:600;font-variant-numeric:tabular-nums}
 .nd-sub{font-size:.7rem;color:var(--subtext)}
+/* Zoom-/Pan-Steuerung (fix in der Viewport-Ecke, wird NICHT mitskaliert) */
+.nd-zoom{position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:2px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:12px;padding:4px;box-shadow:0 6px 18px -6px rgba(16,24,40,.28);z-index:5}
+.nd-zoom button{width:30px;height:30px;border:0;background:transparent;border-radius:8px;cursor:pointer;font-size:1.05rem;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:center;line-height:1}
+.nd-zoom button:hover{background:var(--bg)}
+.nd-zoom .nd-zlbl{min-width:46px;text-align:center;font-size:.78rem;font-weight:700;color:var(--subtext);font-variant-numeric:tabular-nums}
+.nd-hint{position:absolute;right:14px;bottom:14px;font-size:.7rem;color:var(--subtext);background:rgba(255,255,255,.82);border:1px solid var(--border);border-radius:8px;padding:3px 9px;pointer-events:none;z-index:5}
 .nd-rec{border-color:#1F7A45;background:linear-gradient(180deg,#F2FBF6,#FFF)}
 .nd-rec.active{border-color:#1F7A45;box-shadow:0 0 0 2px #1F7A45}
 .nd-rec-split{display:flex;gap:10px;font-size:.72rem;font-weight:700;font-variant-numeric:tabular-nums}
@@ -4620,6 +4658,8 @@ const RECYCLING_ID='__recycling__';
 // Station-Icon je fester Seed-ID (Fallback ⚙️). Recycling hat ein eigenes ♻️.
 const PROD_STATION_ICONS={ 'st-ausglasen':'🔓','st-auftrennen':'🔪','st-randabschnitt':'📐','st-waschen':'🚿','st-pruefung':'🔍','st-sortieren':'🗂️','st-zuschnitt':'🪚' };
 let prodProjectId='', prodPeriod='all', prodSelectedStation=null, prodEditing=false, prodEditDraft=null;
+// Zoom/Pan-State des Knotendiagramms (bleibt über Re-Renders erhalten); Chart-Metrik unten.
+let prodZoom=1, prodPanX=0, prodPanY=0, prodPanning=false, prodPanLast={x:0,y:0}, prodZoomTouched=false, prodInteractInit=false, prodChartMetric='time';
 function escH(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function seVal(id){ const e=g0(id); return e?e.value:''; }
 function seChk(id){ const e=g0(id); return e?e.checked:false; }
@@ -4699,21 +4739,34 @@ function renderProduction(){
   const allLabel=`Alle Projekte${prodPeriod!=='all'?' im Zeitraum':''} (${periodProjects.length})`;
   const projOpts=[`<option value="">${escH(allLabel)}</option>`]
     .concat(periodProjects.map(p=>`<option value="${escH(p.id)}" ${p.id===prodProjectId?'selected':''}>${escH(p.name||p.id)} · ${p.allocations.length} Zuschnitte</option>`)).join('');
-  const intro=`<div class="prod-intro">🏭 <b>Produktions-Digital-Twin (Stufe 1).</b> Das Glas fließt durch die Stationen (Knoten); die Sekundärrohstoffe (Scherben) fließen in den <b>♻️ Recycling-Knoten</b> — <span style="color:#9A6B00;font-weight:700">kontaminiert</span> (Randabschnitt) und <span style="color:#1F7A45;font-weight:700">sortenrein</span> (Reject + Verschnitt) getrennt. Klicke einen Knoten für Details. Wähle Zeitraum/Projekt für die Mengen-Vorhersage.</div>`;
+  const intro=`<div class="prod-intro">🏭 <b>Produktions-Digital-Twin (Stufe 1).</b> Das Glas fließt durch die Stationen (Knoten); die Sekundärrohstoffe (Scherben) fließen in den <b>♻️ Recycling-Knoten</b> — <span style="color:#9A6B00;font-weight:700">kontaminiert</span> (Randabschnitt) und <span style="color:#1F7A45;font-weight:700">sortenrein</span> (Reject + Verschnitt) getrennt. Klicke einen Knoten für Details, ziehe das Diagramm zum Verschieben, zoome unten links. Wähle Zeitraum/Projekt für die Mengen-Vorhersage.</div>`;
   const toolbar=`<div class="prod-toolbar">
-      <label for="prod-period">Produktionszeitraum:</label>
-      <select id="prod-period" class="btn-ghost filt" onchange="setProdPeriod(this.value)">${periodOpts}</select>
-      <label for="prod-proj">Projekt:</label>
-      <select id="prod-proj" class="btn-ghost filt" onchange="setProdProject(this.value)">${projOpts}</select>
+      <div class="tb-field"><label for="prod-period">Zeitraum</label>
+        <select id="prod-period" onchange="setProdPeriod(this.value)">${periodOpts}</select></div>
+      <div class="tb-sep"></div>
+      <div class="tb-field"><label for="prod-proj">Projekt</label>
+        <select id="prod-proj" onchange="setProdProject(this.value)">${projOpts}</select></div>
     </div>`;
-  const summary = plan
-    ? prodSummaryHTML(plan)
-    : `<div class="prod-est">Keine Produktionsdaten im gewählten Zeitraum/Projekt — wähle einen anderen Zeitraum oder ein Projekt mit Zuschnitt-Allokationen. (Das Knotendiagramm zeigt weiterhin die konfigurierten Stationen.)</div>`;
   const diagram=nodeDiagramHTML(stations, plan);
-  // Kopfbereich (Intro/Toolbar/Summary) und Panel auf normale Breite begrenzen — das Diagramm
-  // darf voll breit werden und die Section über die Viewport-Breite wachsen lassen (Whiteboard-Scroll).
-  host.innerHTML = `<div class="prod-head">${intro}${toolbar}${summary}</div>` + diagram + `<div id="prod-panel" class="prod-panel-host"></div>`;
+  // Kopfbereich (Intro/Toolbar) + Panels auf normale Breite begrenzen; das Diagramm lebt in
+  // seinem eigenen, zoom-/verschiebbaren Viewport. Auswertung (KPIs/Chart/Tabelle) ganz unten.
+  host.innerHTML = `<div class="prod-head">${intro}${toolbar}</div>` + diagram
+    + `<div id="prod-panel" class="prod-panel-host"></div>`
+    + `<div id="prod-analytics" class="prod-analytics-host"></div>`;
+  if(!prodInteractInit){
+    prodInteractInit=true;
+    window.addEventListener('mousemove', prodPanMove);
+    window.addEventListener('mouseup', prodPanEnd);
+    window.addEventListener('touchmove', prodPanMove, {passive:false});
+    window.addEventListener('touchend', prodPanEnd);
+    window.addEventListener('resize', ()=>{ if(g0('nd-viewport')) applyCanvasTransform(); });
+  }
   renderProdPanel();
+  renderProdAnalytics();
+  applyCanvasTransform();
+  // Nochmals nach dem Layout messen: beim Tab-Wechsel ist die Section beim ersten Lauf evtl.
+  // noch nicht sichtbar (clientWidth 0) → Auto-Einpassen würde sonst auf den Minimal-Zoom klemmen.
+  requestAnimationFrame(applyCanvasTransform);
 }
 
 // ─── Knotendiagramm (HTML-Knoten + SVG-Verbindungen, keine Lib) ───
@@ -4775,14 +4828,77 @@ function nodeDiagramHTML(stations, plan){
     if(plan){ const a=plan.byStation[e.s.id], wv=a&&a.waste[e.w.id]; if(wv && wv.kg>0) txt=`${fmtNum(wv.kg,1)} kg`; }
     labels+=`<div class="nd-elabel ${e.w.contaminated?'contam':'clean'}" style="left:${lx}px;top:${ly}px">${escH(txt)}</div>`;
   });
-  return `<div class="nd-wrap"><div class="nd-canvas" style="width:${canvasW}px;height:${canvasH}px">${svg}${nodes}${recNode}${labels}</div></div>`;
+  const zoom=`<div class="nd-zoom" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+      <button type="button" title="Verkleinern" onclick="prodZoomBy(-0.2)">−</button>
+      <span class="nd-zlbl" id="nd-zlbl">100%</span>
+      <button type="button" title="Vergrößern" onclick="prodZoomBy(0.2)">+</button>
+      <button type="button" title="Einpassen" onclick="prodFit()">⤢</button>
+    </div>`;
+  return `<div class="nd-viewport" id="nd-viewport" onmousedown="prodPanStart(event)" ontouchstart="prodPanStart(event)" onwheel="prodWheel(event)">
+      <div class="nd-canvas" id="nd-canvas" style="width:${canvasW}px;height:${canvasH}px">${svg}${nodes}${recNode}${labels}</div>
+      ${zoom}<div class="nd-hint">Ziehen zum Verschieben · Strg+Mausrad zum Zoomen</div>
+    </div>`;
+}
+// ─── Zoom & Pan des Diagramm-Canvas (CSS-transform, State bleibt über Re-Renders erhalten) ───
+function applyCanvasTransform(){
+  const vp=g0('nd-viewport'), cv=g0('nd-canvas'); if(!vp||!cv) return;
+  if(!prodZoomTouched){                                  // Auto-Einpassen, solange der User nicht selbst gezoomt/verschoben hat
+    const cw=vp.clientWidth, ch=vp.clientHeight, canvasW=cv.offsetWidth, canvasH=cv.offsetHeight;
+    if(cw<100){ requestAnimationFrame(applyCanvasTransform); return; }  // noch nicht ausgelegt → später erneut messen
+    const z=Math.min(1, Math.max(0.3, (cw-28)/canvasW));
+    prodZoom=z;
+    prodPanX=Math.max(8, (cw-canvasW*z)/2);
+    prodPanY=Math.max(8, (ch-canvasH*z)/2);
+  }
+  cv.style.transform=`translate(${prodPanX}px,${prodPanY}px) scale(${prodZoom})`;
+  vp.style.backgroundSize=`${24*prodZoom}px ${24*prodZoom}px`;
+  vp.style.backgroundPosition=`${prodPanX}px ${prodPanY}px`;
+  const lbl=g0('nd-zlbl'); if(lbl) lbl.textContent=Math.round(prodZoom*100)+'%';
+}
+function prodZoomAt(cx, cy, nz){                          // zoomt so, dass der Canvas-Punkt unter (cx,cy) fix bleibt
+  nz=Math.min(2, Math.max(0.3, nz));
+  const k=nz/prodZoom;
+  prodPanX = cx - (cx - prodPanX)*k;
+  prodPanY = cy - (cy - prodPanY)*k;
+  prodZoom = nz; prodZoomTouched=true; applyCanvasTransform();
+}
+function prodZoomBy(delta){
+  const vp=g0('nd-viewport'); if(!vp) return;
+  prodZoomAt(vp.clientWidth/2, vp.clientHeight/2, prodZoom+delta);
+}
+function prodWheel(e){
+  if(!(e.ctrlKey||e.metaKey)) return;          // ohne Strg/⌘ scrollt die Seite normal weiter (kein Zoom-„Gefängnis")
+  const vp=g0('nd-viewport'); if(!vp) return;
+  e.preventDefault();
+  const rect=vp.getBoundingClientRect();
+  prodZoomAt(e.clientX-rect.left, e.clientY-rect.top, prodZoom + (e.deltaY<0?0.12:-0.12));
+}
+function prodFit(){ prodZoomTouched=false; applyCanvasTransform(); }
+function prodPanStart(e){
+  if(e.target.closest('.nd-node') || e.target.closest('.nd-zoom')) return;  // Knoten-Klick & Zoom-Widget nicht als Pan werten
+  const pt=e.touches?e.touches[0]:e;
+  prodPanning=true; prodZoomTouched=true; prodPanLast={x:pt.clientX,y:pt.clientY};
+  const vp=g0('nd-viewport'); if(vp) vp.classList.add('panning');
+}
+function prodPanMove(e){
+  if(!prodPanning) return;
+  const pt=e.touches?e.touches[0]:e;
+  prodPanX += pt.clientX-prodPanLast.x; prodPanY += pt.clientY-prodPanLast.y;
+  prodPanLast={x:pt.clientX,y:pt.clientY};
+  if(e.cancelable) e.preventDefault();
+  applyCanvasTransform();
+}
+function prodPanEnd(){
+  if(!prodPanning) return;
+  prodPanning=false;
+  const vp=g0('nd-viewport'); if(vp) vp.classList.remove('panning');
 }
 function ndNodeHTML(s, plan, x, y, w, h){
   const a=plan?plan.byStation[s.id]:null;
   const active=(s.id===prodSelectedStation)?' active':'';
   const hasWaste=(s.wasteStreams||[]).length>0;
   let metric;
-  if(a && a.stueck>0) metric=`<div class="nd-metric">${fmtNum(a.stueck,0)} Stk · ${fmtDur(a.timeSec)}</div>`;
+  if(a && a.stueck>0) metric=`<div class="nd-metric">${fmtNum(a.stueck,0)} <span class="nd-unit">Stk</span></div><div class="nd-msub">${fmtM2(a.m2)} · ${fmtDur(a.timeSec)}</div>`;
   else if(plan) metric=`<div class="nd-sub">nicht im Plan</div>`;
   else metric=`<div class="nd-sub">👥 ${s.workers} Pers.${hasWaste?' · ♻️':''}</div>`;
   return `<div class="nd-node${active}" style="left:${x}px;top:${y}px;width:${w}px;min-height:${h}px" onclick="selectProdStation('${s.id}')">
@@ -4807,22 +4923,58 @@ function ndRecyclingHTML(plan, x, y, w, h){
   </div>`;
 }
 
-// ─── Gesamt-Summary (bei gewähltem Zeitraum/Projekt) ───
-function prodSummaryHTML(plan){
-  const t = plan.totals;
-  const wasteRows = Object.values(t.waste);
-  const totWasteM2 = wasteRows.reduce((s,w)=>s+w.m2,0);
-  const totWasteKg = wasteRows.reduce((s,w)=>s+w.kg,0);
-  const kpis = `
-    <div class="kpi"><div class="kpi-v">${fmtDur(t.timeSec)}</div><div class="kpi-l">Geschätzte Gesamtzeit</div></div>
-    <div class="kpi"><div class="kpi-v">${fmtNum(t.strom,1)} kWh</div><div class="kpi-l">Strom gesamt</div></div>
-    <div class="kpi"><div class="kpi-v">${fmtNum(t.wasser,0)} L</div><div class="kpi-l">Wasser gesamt</div></div>
-    <div class="kpi"><div class="kpi-v">${fmtNum(totWasteKg,0)} kg</div><div class="kpi-l">Abfall gesamt · ${fmtM2(totWasteM2)}</div></div>`;
-  const wasteDetail = wasteRows.length
-    ? `<div class="prod-est" style="margin:6px 0 0">Abfallströme: ` + wasteRows.map(w=>`${escH(w.name)} ${fmtNum(w.kg,0)} kg (${fmtM2(w.m2)})`).join(' · ') + `</div>`
-    : '';
-  return `<div class="prod-summary"><div class="dash-kpis">${kpis}</div></div>${wasteDetail}
-    <div class="prod-est" style="margin-top:6px">Schätzung auf Basis konfigurierter Richtwerte (sequentielle Summe, ohne Parallelität/Personalbesetzung) — wird mit echten Erfassungsdaten genauer.</div>`;
+// ─── Unteres Auswertungs-Panel (KPIs + Balken je Station + Stationsübersicht) ───
+const PROD_CHART_METRICS=[
+  {k:'time',   label:'Zeit',   get:a=>a.timeSec, fmt:v=>fmtDur(v),            amber:false},
+  {k:'strom',  label:'Strom',  get:a=>a.strom,   fmt:v=>fmtNum(v,1)+' kWh',   amber:false},
+  {k:'wasser', label:'Wasser', get:a=>a.wasser,  fmt:v=>fmtNum(v,0)+' L',     amber:false},
+  {k:'waste',  label:'Abfall', get:a=>Object.values(a.waste).reduce((s,w)=>s+w.kg,0), fmt:v=>fmtNum(v,1)+' kg', amber:true},
+];
+function setProdChartMetric(k){ prodChartMetric=k; renderProdAnalytics(); }
+function renderProdAnalytics(){
+  const host=g0('prod-analytics'); if(!host) return;
+  const plan=planForSelection();
+  if(!plan){
+    host.innerHTML=`<div class="prod-analytics"><div class="pa-title">📊 Auswertung</div>
+      <div class="prod-est" style="margin:10px 0 0">Keine Produktionsdaten im gewählten Zeitraum/Projekt — wähle einen anderen Zeitraum oder ein Projekt mit Zuschnitt-Allokationen. Das Knotendiagramm oben zeigt weiterhin die konfigurierten Stationen.</div></div>`;
+    return;
+  }
+  const stations=stationsSorted();
+  const t=plan.totals;
+  const wasteRows=Object.values(t.waste);
+  const totWasteKg=wasteRows.reduce((s,w)=>s+w.kg,0), totWasteM2=wasteRows.reduce((s,w)=>s+w.m2,0);
+  const kpis=`<div class="dash-kpis">
+      <div class="kpi"><div class="kpi-v">${fmtDur(t.timeSec)}</div><div class="kpi-l">Geschätzte Gesamtzeit</div></div>
+      <div class="kpi"><div class="kpi-v">${fmtNum(t.strom,1)} kWh</div><div class="kpi-l">Strom gesamt</div></div>
+      <div class="kpi"><div class="kpi-v">${fmtNum(t.wasser,0)} L</div><div class="kpi-l">Wasser gesamt</div></div>
+      <div class="kpi"><div class="kpi-v">${fmtNum(totWasteKg,0)} kg</div><div class="kpi-l">Abfall gesamt · ${fmtM2(totWasteM2)}</div></div>
+    </div>`;
+  // Balken je Station für die gewählte Metrik
+  const metric=PROD_CHART_METRICS.find(m=>m.k===prodChartMetric)||PROD_CHART_METRICS[0];
+  const rows=stations.map(s=>({s,a:plan.byStation[s.id]})).filter(r=>r.a && r.a.stueck>0);
+  const max=Math.max(0.0001, ...rows.map(r=>metric.get(r.a)));
+  const seg=PROD_CHART_METRICS.map(m=>`<button type="button" class="${m.k===prodChartMetric?'active':''}" onclick="setProdChartMetric('${m.k}')">${m.label}</button>`).join('');
+  const bars=rows.length
+    ? rows.map(r=>{ const v=metric.get(r.a), pct=Math.max(2,Math.round(v/max*100));
+        return `<div class="pbar-row"><div class="pbar-lbl" title="${escH(r.s.name)}"><span class="pbar-ico">${stationIcon(r.s)}</span>${escH(r.s.name)}</div>
+          <div class="pbar-track"><div class="pbar-fill${metric.amber?' amber':''}" style="width:${pct}%"></div></div>
+          <div class="pbar-val">${metric.fmt(v)}</div></div>`; }).join('')
+    : `<div class="sp-muted">Keine Station im Plan.</div>`;
+  // Stationsübersicht-Tabelle
+  const tRows=rows.map(r=>{ const a=r.a, wkg=Object.values(a.waste).reduce((s,w)=>s+w.kg,0);
+      return `<tr><td>${stationIcon(r.s)} ${escH(r.s.name)}</td><td>${fmtNum(a.stueck,0)}</td><td>${fmtDur(a.timeSec)}</td>
+        <td>${a.strom>0?fmtNum(a.strom,2):'–'}</td><td>${a.wasser>0?fmtNum(a.wasser,0):'–'}</td><td>${wkg>0?fmtNum(wkg,1):'–'}</td></tr>`; }).join('');
+  const totRow=`<tr class="pt-tot"><td>Gesamt</td><td>–</td><td>${fmtDur(t.timeSec)}</td><td>${fmtNum(t.strom,2)}</td><td>${fmtNum(t.wasser,0)}</td><td>${fmtNum(totWasteKg,1)}</td></tr>`;
+  const table=`<table class="ptable"><thead><tr><th>Station</th><th>Stück</th><th>Zeit</th><th>⚡ kWh</th><th>💧 L</th><th>♻️ kg</th></tr></thead><tbody>${tRows}${totRow}</tbody></table>`;
+  host.innerHTML=`<div class="prod-analytics">
+      <div class="pa-head"><div class="pa-title">📊 Auswertung <span style="font-weight:600;font-size:.8rem;color:var(--subtext)">— Schätzung</span></div></div>
+      ${kpis}
+      <div class="pa-cols">
+        <div class="pa-block"><h4>Je Station <span class="seg">${seg}</span></h4>${bars}</div>
+        <div class="pa-block"><h4>Stationsübersicht</h4><div style="overflow-x:auto">${table}</div></div>
+      </div>
+      <div class="pa-foot">Schätzung auf Basis konfigurierter Richtwerte (sequentielle Summe, ohne Parallelität/Personalbesetzung) — wird mit echten Erfassungsdaten genauer. „Stück" je Station = durchlaufende Scheiben (nach dem Auftrennen mehr als am Eingang).</div>
+    </div>`;
 }
 
 // ─── Detail-Panel: Station (Konfig/Vorhersage) oder Recycling-Knoten ───
